@@ -5,7 +5,7 @@
 import os
 
 from ..ai.base import AIModel
-from ..ai.google_provider import GoogleAIProvider
+from ..ai.providers.google import GoogleAIProvider
 
 PROMPT_TEMPLATE = """Analyze the following product listing to identify and extract the **Brand, Model, and Variant** of the product being offered, as well as any other **additional information** that might be relevant to someone choosing this specific listing.
 

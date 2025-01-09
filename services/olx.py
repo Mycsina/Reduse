@@ -193,7 +193,6 @@ class OLXScraper(BaseScraper):
             try:
                 listing_src = await self._get_page_src(browser, listing.link.unicode_string())
                 listing.description = self.OLXParser._parse_description(listing_src)
-                listing.location = self.OLXParser._parse_location(listing_src)
                 listing.more = False  # We've fetched all details
                 self.logger.info(f"Got details for listing: {listing.title}")
                 return listing
@@ -262,21 +261,6 @@ class OLXScraper(BaseScraper):
                 return "Error getting description"
 
         @classmethod
-        def _parse_location(cls, src: str) -> str:
-            """Extracts the location from a listing page."""
-            try:
-                soup = BeautifulSoup(src, "html.parser")
-                location_div = soup.find("div", {"class": "css-13l8eec"})
-                if location_div and isinstance(location_div, Tag):
-                    div_content = location_div.find("div")
-                    if div_content and isinstance(div_content, Tag):
-                        return div_content.text
-                return "Location not found"
-            except Exception as e:
-                cls.logger.error(f"Error getting location: {str(e)}")
-                return "Error getting location"
-
-        @classmethod
         def _parse_listing_cards(cls, src: str, analyzed_ids: set) -> List[ListingDocument]:
             """Parses listing cards from HTML source without fetching details."""
             listings = []
@@ -292,7 +276,7 @@ class OLXScraper(BaseScraper):
 
                         # Determine if it's an external listing
                         is_external = not (link.startswith("/") or link.startswith(BASE_URL))
-                        site = cls.__bases__[-1]._get_site_from_url(link) if is_external else "olx"
+                        site = OLXScraper._get_site_from_url(link) if is_external else "olx"
 
                         # Normalize internal links
                         if not is_external and link.startswith("/"):
@@ -323,7 +307,6 @@ class OLXScraper(BaseScraper):
                                     price_value=price_value,
                                     photo_url=photo_url,
                                     description=None,
-                                    location=None,
                                     more=True,  # All listings from category view have more details to fetch
                                 )
                             )

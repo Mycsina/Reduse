@@ -1,10 +1,9 @@
 import logging
-from typing import List
 
-from ..schemas.listings import ListingDocument
 from ..services.olx import OLXScraper
 from ..services.scraper_base import ScraperRegistry
 from .analysis import analyze_new_listings
+from ..schemas.listings import save_listings
 
 scraper_registry = ScraperRegistry()
 
@@ -55,7 +54,7 @@ async def scrape_analyze_and_save(url: str, rate_limit: bool = True):
         logging.error(f"An error occurred during scraping or saving for URL: {url}. Error: {e}")
 
 
-async def parse_olx_categories(rate_limit: bool = True):
+async def scrape_olx_categories(rate_limit: bool = True):
     """Parse all OLX categories and save listings without details."""
     try:
         scraper = OLXScraper()
@@ -70,9 +69,3 @@ async def parse_olx_categories(rate_limit: bool = True):
 
     except Exception as e:
         logging.error(f"Error during OLX category parsing: {str(e)}")
-
-
-async def save_listings(listings: List[ListingDocument]) -> None:
-    """Save listings to the database."""
-    await ListingDocument.insert_many(listings)
-    logging.info(f"Saved {len(listings)} listings")

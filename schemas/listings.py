@@ -1,7 +1,8 @@
 """Schema for product listings."""
 
 from decimal import Decimal, InvalidOperation
-from typing import Optional
+import logging
+from typing import List, Optional
 from bson import Decimal128
 from pydantic import HttpUrl, validator, field_validator
 from beanie import Document
@@ -35,7 +36,6 @@ class ListingDocument(Document):
 
     # Details (populated when fetching full listing)
     description: Optional[str] = None
-    location: Optional[str] = None
 
     # Status flags
     more: bool = True  # Whether there are more details to fetch
@@ -49,7 +49,7 @@ class ListingDocument(Document):
         if v is None and "price_str" in values:
             try:
                 # Remove currency symbols and normalize
-                price_str = values["price_str"].replace("€", "").replace(".", "").replace(",", ".") # type: ignore
+                price_str = values["price_str"].replace("€", "").replace(".", "").replace(",", ".")  # type: ignore
                 # Extract first number found (ignore ranges)
                 import re
 
@@ -59,8 +59,8 @@ class ListingDocument(Document):
             except (ValueError, InvalidOperation):
                 pass
         return v
-    
-    @validator('price_value', pre=True)
+
+    @validator("price_value", pre=True)
     def convert_decimal128(cls, v):
         if isinstance(v, Decimal128):
             return v.to_decimal()
@@ -75,3 +75,9 @@ class ListingDocument(Document):
             [("price_value", 1)],  # Index for price-based queries
             [("analysis_status", 1), ("retry_count", 1)],  # Index for retry queries
         ]
+
+
+async def save_listings(listings: List[ListingDocument]) -> None:
+    """Save listings to the database."""
+    await ListingDocument.insert_many(listings)
+    logging.info(f"Saved {len(listings)} listings")

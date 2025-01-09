@@ -1,24 +1,20 @@
 """Analysis logic for product listings."""
 
 import logging
-from typing import Dict, Any, List, Optional
+import traceback
+from typing import Any, Dict, List, Optional
 
+from ..ai.base import AIModel
+from ..ai.providers.google import GoogleAIProvider
 from ..config import settings
 from ..prompts.product_analysis import get_model_instance
-from ..schemas.listings import ListingDocument
 from ..schemas.analyzed_listings import AnalyzedListingDocument
-from ..ai.base import AIModel
-from ..utils.rate_limiter import AIRateLimiter
-from ..ai.google_provider import GoogleAIProvider
+from ..schemas.listings import AnalysisStatus, ListingDocument
 from ..services.analysis_service import AnalysisService
 
 # Get logger but don't configure it (configuration is done in logging_config.py)
 logger = logging.getLogger(__name__)
 
-# Initialize rate limiter first since it's needed by the model
-rate_limiter = AIRateLimiter(
-    settings.ai.rate_limits["requests_per_minute"], settings.ai.rate_limits["tokens_per_minute"]
-)
 
 # Initialize AI provider and model
 provider = GoogleAIProvider(settings.ai.gemini_api_key.get_secret_value())
@@ -40,7 +36,7 @@ async def add_test_listing():
     listing = AnalyzedListingDocument(
         original_listing_id="test_id",
         analysis_version="test_version",
-        brand="test_brand", 
+        brand="test_brand",
         model="test_model",
         variant="test_variant",
         info={"test_info": "test_info"},
@@ -55,6 +51,7 @@ async def analyze_listing(listing: ListingDocument) -> Optional[AnalyzedListingD
         async for analyzed in analysis_service.analyze_batch([listing]):
             result.append(analyzed)
         if result:
+            await change_state([listing], AnalysisStatus.COMPLETED)
             await analysis_service.bulk_create_analyses(result)
             return result[0]
         return None
@@ -72,19 +69,12 @@ async def analyze_new_listings() -> None:
 
     logger.info(f"Found {len(pending)} unfinished listings")
 
-    # Collect results as they come in
-    results = []
-    async for analyzed in analysis_service.analyze_batch(pending):
-        results.append(analyzed)
-        if len(results) >= 10:  # Save in chunks to avoid memory buildup
-            logger.info(f"Saving {len(results)} analyzed listings")
-            await analysis_service.bulk_create_analyses(results)
-            results = []
+    await analyze_and_save(pending)
 
     logger.info(f"Analysis complete: {len(pending)} listings processed")
 
 
-async def retry_failed_analyses() -> List[AnalyzedListingDocument]:
+async def retry_failed_analyses() -> None:
     """Retry failed analyses."""
     try:
         logger.info("Retrying failed analyses")
@@ -92,26 +82,16 @@ async def retry_failed_analyses() -> List[AnalyzedListingDocument]:
 
         if not failed_listings:
             logger.info("No failed listings found")
-            return []
+            return
 
         logger.info(f"Found {len(failed_listings)} failed listings")
 
-        results = []
-        async for analyzed in analysis_service.analyze_batch(failed_listings):
-            results.append(analyzed)
-            if len(results) >= 10:  # Save in chunks
-                await analysis_service.bulk_create_analyses(results)
-                results = []
+        await analyze_and_save(failed_listings)
 
-        # Save any remaining results
-        if results:
-            await analysis_service.bulk_create_analyses(results)
+        logger.info(f"Analysis complete: {len(failed_listings)} listings processed")
 
-        logger.info(f"Analysis complete: {len(results)} listings processed")
-        return results
     except Exception as e:
-        logger.error(f"Error retrying failed analyses: {str(e)}")
-        return []
+        logger.error(f"Error retrying failed analyses: {str(e)}\n{traceback.format_exc()}")
 
 
 async def get_analysis_status() -> Dict[str, Any]:
@@ -143,7 +123,7 @@ async def get_analysis_status() -> Dict[str, Any]:
             "failed": failed,
             "in_progress": in_progress,
             "max_retries_reached": max_retries,
-            "can_process": pending > 0 and model.rate_limiter.get_rpm_remaining() > 0,
+            "can_process": pending > 0 or failed > 0,
         }
 
     except Exception as e:
@@ -152,3 +132,31 @@ async def get_analysis_status() -> Dict[str, Any]:
             "error": str(e),
             "can_process": False,
         }
+
+
+async def change_state(listings: List[ListingDocument], status: AnalysisStatus) -> None:
+    """Change the state of listings."""
+    # Collect original ids
+    original_ids = [listing.original_id for listing in listings]
+    # Update listings
+    ListingDocument.find_many({"original_id": {"$in": original_ids}}).update({"$set": {"analysis_status": status}})
+
+
+async def analyze_and_save(listings: List[ListingDocument]) -> None:
+    # Collect results as they come in
+    logger.debug(f"Analyzing {len(listings)} listings")
+    originals = []
+    analysis_results = []
+    async for original, analyzed in analysis_service.analyze_batch(listings, batch_size=10):
+        originals.append(original)
+        analysis_results.append(analyzed)
+        if len(analysis_results) >= 10:  # Save in chunks to avoid memory buildup
+            logger.debug(f"Saving {len(analysis_results)} analyzed listings")
+            await change_state(originals, AnalysisStatus.COMPLETED)
+            await analysis_service.bulk_create_analyses(analysis_results)
+            original = []
+            analysis_results = []
+
+    # Save any remaining results
+    if analysis_results:
+        await analysis_service.bulk_create_analyses(analysis_results)
