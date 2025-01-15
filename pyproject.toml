@@ -21,6 +21,8 @@ openai = "^1.6.1"
 groq = "^0.13.1"
 pydantic-settings = "^2.7.1"
 tqdm = "^4.66.2"
+apscheduler = "^3.11.0"
+certifi = "^2024.12.14"
 
 [tool.poetry.group.dev.dependencies]
 ipykernel = "^6.29.5"

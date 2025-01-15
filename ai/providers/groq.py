@@ -2,7 +2,7 @@
 
 import json
 import logging
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional, Union
 
 from groq import AsyncGroq
 from groq.types.chat import ChatCompletion
@@ -22,6 +22,7 @@ class GroqProvider(BaseProvider):
         """
         super().__init__()
         self.client = AsyncGroq(api_key=api_key)
+        self._dimensions = 768  # Same as Gemini for compatibility
         self.logger = logging.getLogger(__name__)
 
     async def generate_text(
@@ -90,3 +91,28 @@ class GroqProvider(BaseProvider):
             raise ProviderError(f"Invalid JSON response: {e}")
         except Exception as e:
             raise ProviderError(f"Groq error: {str(e)}") from e
+
+    async def get_embeddings(self, text: Union[str, List[str]]) -> List[List[float]]:
+        """Get embeddings for a text or list of texts.
+
+        Note: Groq does not currently support embeddings, so this is a fallback implementation
+        that returns zero vectors. This allows the system to continue functioning even if
+        embeddings are requested from Groq, though the results will not be meaningful.
+
+        Args:
+            text: A single text string or list of text strings to embed
+
+        Returns:
+            A list of zero vectors with the same dimensions as Gemini embeddings
+        """
+        # Convert single text to list for uniform processing
+        texts = [text] if isinstance(text, str) else text
+        return [[0.0] * self.get_dimensions()] * len(texts)
+
+    def get_dimensions(self) -> int:
+        """Get the dimensionality of the embeddings vectors.
+
+        Returns:
+            Number of dimensions (768 for compatibility with Gemini)
+        """
+        return self._dimensions

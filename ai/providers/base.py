@@ -2,7 +2,7 @@
 
 import logging
 from abc import ABC, abstractmethod
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional, Union
 
 
 class ProviderError(Exception):
@@ -73,5 +73,32 @@ class BaseProvider(ABC):
         Raises:
             ProviderError: If generation or JSON parsing fails
             RateLimitError: If rate limit is exceeded
+        """
+        pass
+
+    @abstractmethod
+    async def get_embeddings(self, text: Union[str, List[str]]) -> List[List[float]]:
+        """Get embeddings for a text or list of texts.
+
+        Args:
+            text: A single text string or list of text strings to embed
+
+        Returns:
+            A list of embeddings vectors, where each vector is a list of floats.
+            If a single text was provided, returns a list with one vector.
+            If a list of texts was provided, returns a list with one vector per text.
+
+        Raises:
+            ProviderError: If embeddings generation fails
+            RateLimitError: If rate limit is exceeded
+        """
+        pass
+
+    @abstractmethod
+    def get_dimensions(self) -> int:
+        """Get the dimensionality of the embeddings vectors.
+
+        Returns:
+            The number of dimensions in the embeddings vectors.
         """
         pass

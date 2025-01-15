@@ -1,25 +1,28 @@
-import os
+"""Database initialization and configuration."""
 
+import logging
 from beanie import init_beanie
-from dotenv import load_dotenv
 from motor.motor_asyncio import AsyncIOMotorClient
 
+from .config import settings
 from .schemas.ai_cache import AICacheDocument
 from .schemas.analyzed_listings import AnalyzedListingDocument
 from .schemas.listings import ListingDocument
 
-load_dotenv(override=True)
-ATLAS_USER = os.getenv("ATLAS_USER")
-ATLAS_PASS = os.getenv("ATLAS_PASSWORD")
+logger = logging.getLogger(__name__)
 
-
-URI = f"mongodb+srv://{ATLAS_USER}:{ATLAS_PASS}@vroom.k7x4g.mongodb.net/?retryWrites=true&w=majority&appName=vroom"
-
-
+# List of document models to register with Beanie
 MODELS = [ListingDocument, AnalyzedListingDocument, AICacheDocument]
 
 
 async def init_db():
-    client = AsyncIOMotorClient(URI)
-    db_name = client.get_database("Vroom")
-    await init_beanie(database=db_name, document_models=MODELS)
+    """Initialize the database connection and Beanie ODM."""
+    logger.info("Initializing database")
+    client = AsyncIOMotorClient(settings.database.uri)
+    await init_beanie(database=client.get_database(settings.database.database_name), document_models=MODELS)
+    logger.info("Database initialized")
+
+
+def get_db():
+    """Get a database client instance."""
+    return AsyncIOMotorClient(settings.database.uri)

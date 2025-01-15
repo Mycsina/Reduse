@@ -17,9 +17,9 @@ LOGS_DIR = BASE_DIR / "logs"
 class APISettings(BaseSettings):
     """API-related settings."""
 
-    api_key: SecretStr = Field(default=..., env="API_KEY") # type: ignore
-    cors_origins: list[str] = Field(default=["*"]) # type: ignore
-    environment: str = Field(default="development", env="ENVIRONMENT") # type: ignore
+    api_key: SecretStr = Field(default=..., env="API_KEY")  # type: ignore
+    cors_origins: list[str] = Field(default=["*"])  # type: ignore
+    environment: str = Field(default="development", env="ENVIRONMENT")  # type: ignore
 
     model_config = SettingsConfigDict(env_file=".env", extra="allow")
 
@@ -27,8 +27,8 @@ class APISettings(BaseSettings):
 class DatabaseSettings(BaseSettings):
     """Database-related settings."""
 
-    atlas_user: str = Field(..., env="ATLAS_USER") # type: ignore
-    atlas_password: SecretStr = Field(..., env="ATLAS_PASSWORD") # type: ignore
+    atlas_user: str = Field(..., env="ATLAS_USER")  # type: ignore
+    atlas_password: SecretStr = Field(..., env="ATLAS_PASSWORD")  # type: ignore
     database_name: str = Field(default="Vroom")
 
     @property
@@ -45,9 +45,9 @@ class DatabaseSettings(BaseSettings):
 class AISettings(BaseSettings):
     """AI-related settings."""
 
-    gemini_api_key: SecretStr = Field(default="", env="GEMINI_API_KEY") # type: ignore
-    openai_api_key: SecretStr = Field(default="", env="OPENAI_API_KEY") # type: ignore
-    groq_api_key: SecretStr = Field(default="", env="GROQ_API_KEY") # type: ignore
+    gemini_api_key: SecretStr = Field(default="", env="GEMINI_API_KEY")  # type: ignore
+    openai_api_key: SecretStr = Field(default="", env="OPENAI_API_KEY")  # type: ignore
+    groq_api_key: SecretStr = Field(default="", env="GROQ_API_KEY")  # type: ignore
     default_model: str = Field(default="gemini-2.0-flash-exp")
     rate_limits: Dict[str, int] = Field(
         default={
@@ -57,6 +57,8 @@ class AISettings(BaseSettings):
             "max_retries": 3,
         }
     )
+    google_project_id: str = Field(default="", env="GOOGLE_PROJECT_ID")  # type: ignore
+    google_location: str = Field(default="us-central1", env="GOOGLE_LOCATION")  # type: ignore
 
     model_config = SettingsConfigDict(env_file=".env", extra="allow")
 
@@ -64,7 +66,7 @@ class AISettings(BaseSettings):
 class ScraperSettings(BaseSettings):
     """Scraper-related settings."""
 
-    max_concurrent_requests: int = Field(default=3)
+    max_concurrent_requests: int = Field(default=3, env="MAX_CONCURRENT_REQUESTS")  # type: ignore
     batch_size: Dict[str, int] = Field(
         default={
             "listings": 100,
@@ -93,6 +95,7 @@ class LoggingSettings(BaseSettings):
     """Logging-related settings."""
 
     log_level: str = Field(default="INFO")
+    file_log_level: str = Field(default="DEBUG")
     file_max_bytes: int = Field(default=10 * 1024 * 1024)  # 10MB
     backup_count: int = Field(default=9)
     batch_size: int = Field(default=100)
@@ -111,24 +114,37 @@ class LoggingSettings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", extra="allow")
 
 
+class SchedulerSettings(BaseSettings):
+    """Scheduler-related settings."""
+
+    collection: str = Field(default="scheduled_jobs")
+    timezone: str = Field(default="UTC")
+    job_defaults: Dict[str, Any] = Field(
+        default={
+            "coalesce": True,  # Combine multiple pending executions of the same job into one
+            "max_instances": 1,  # Only allow one instance of each job to run at a time
+            "misfire_grace_time": 60,  # Allow jobs to be 60 seconds late
+        }
+    )
+    executors: Dict[str, Dict[str, Any]] = Field(
+        default={"default": {"class": "apscheduler.executors.asyncio:AsyncIOExecutor"}}
+    )
+
+    model_config = SettingsConfigDict(env_file=".env", extra="allow")
+
+
 class Settings(BaseSettings):
     """Global settings container."""
 
     api: APISettings = Field(default_factory=APISettings)
-    database: DatabaseSettings = Field(default_factory=DatabaseSettings) # type: ignore
+    database: DatabaseSettings = Field(default_factory=DatabaseSettings)  # type: ignore
     ai: AISettings = Field(default_factory=AISettings)
     scraper: ScraperSettings = Field(default_factory=ScraperSettings)
     logging: LoggingSettings = Field(default_factory=LoggingSettings)
+    scheduler: SchedulerSettings = Field(default_factory=SchedulerSettings)
 
     model_config = SettingsConfigDict(env_file=".env", extra="allow")
 
 
 # Create global settings instance
 settings = Settings()
-
-# Export individual configs for backward compatibility
-API_CONFIG = settings.api.model_dump()
-DB_CONFIG = settings.database.model_dump()
-AI_CONFIG = settings.ai.model_dump()
-SCRAPER_CONFIG = settings.scraper.model_dump()
-LOGGING_CONFIG = settings.logging.model_dump()

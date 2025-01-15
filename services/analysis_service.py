@@ -1,6 +1,7 @@
 """Analysis service for product listings."""
 
 import asyncio
+import json
 import logging
 import traceback
 from typing import Any, AsyncGenerator, Dict, List, Optional, Tuple
@@ -21,18 +22,31 @@ class AnalysisService:
         self.logger = logger
         self.model = product_analysis.get_model_instance()
 
-    def parse_response(self, response: str) -> dict:
-        """Parse the AI response into a structured format.
+    async def _generate_embeddings(self, info: Dict[str, Any]) -> List[float]:
+        """Generate embeddings from the info struct.
 
-        Args:
-            response: The raw response from the AI model
-
-        Returns:
-            dict: The parsed response containing listings data
+        This function converts the info dictionary into a text representation
+        and uses the embeddings provider to generate vector embeddings.
         """
-        try:
-            import json
+        # Convert info dict to a text representation
+        text_parts = []
+        for key, value in sorted(info.items()):  # Sort for consistent ordering
+            if isinstance(value, (list, tuple)):
+                text_parts.append(f"{key}: {', '.join(str(v) for v in value)}")
+            elif isinstance(value, dict):
+                text_parts.append(f"{key}: {', '.join(f'{k}={v}' for k, v in sorted(value.items()))}")
+            else:
+                text_parts.append(f"{key}: {value}")
 
+        text = " | ".join(text_parts)
+
+        # Get embeddings from provider
+        embeddings = await self.ai_model.provider.get_embeddings(text)
+        return embeddings[0]  # Return first (and only) vector
+
+    def parse_response(self, response: str) -> dict:
+        """Parse the AI response into a structured format."""
+        try:
             return json.loads(response)
         except Exception as e:
             self.logger.error(f"Error parsing AI response: {str(e)}")
@@ -49,15 +63,7 @@ class AnalysisService:
     async def analyze_batch(
         self, listings: List[ListingDocument], batch_size: int = 5
     ) -> AsyncGenerator[Tuple[ListingDocument, AnalyzedListingDocument], None]:
-        """Analyze listings in batches, yielding results as they're processed.
-
-        Args:
-            listings: List of listings to analyze
-            batch_size: Number of listings to analyze in each batch
-
-        Yields:
-            Tuple[ListingDocument, AnalyzedListingDocument]: Original and analyzed listings
-        """
+        """Analyze listings in batches, yielding results as they're processed."""
         # Process listings in batches
         total_batches = (len(listings) + batch_size - 1) // batch_size
         progress_bar = tqdm(total=total_batches, desc="Analyzing listings")
@@ -96,12 +102,17 @@ class AnalysisService:
                     analysis = analyzed_data[j]
                     self.logger.debug(f"Analysis: {analysis}")
                     try:
+                        # Generate embeddings from the info struct
+                        info = analysis.get("info", {})
+                        embeddings = await self._generate_embeddings(info)
+
                         analyzed = AnalyzedListingDocument(
                             original_listing_id=listing.original_id,
                             brand=analysis.get("brand"),
                             model=analysis.get("model"),
                             variant=analysis.get("variant"),
-                            info=analysis.get("info", {}),
+                            info=info,
+                            embeddings=embeddings,
                             analysis_version="1.0",
                         )
                         await self._mark_status(listing, AnalysisStatus.COMPLETED)
@@ -151,8 +162,10 @@ class AnalysisService:
 
     async def bulk_create_analyses(self, analyses: List[AnalyzedListingDocument]):
         """Bulk create analyses."""
-        [self.logger.debug(f"Creating {analysed} in bulk") for analysed in analyses]
-        self.logger.debug(analyses)
+        [self.logger.debug(f"Creating {analysed.original_listing_id} in bulk") for analysed in analyses]
+        original_ids = [analysed.original_listing_id for analysed in analyses]
+        [self.logger.debug(f"Deleting {original_id}") for original_id in original_ids]
+        await AnalyzedListingDocument.find_many({"original_listing_id": {"$in": original_ids}}).delete()
         await AnalyzedListingDocument.insert_many(analyses)
 
     async def get_status_counts(self) -> dict:

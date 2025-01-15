@@ -94,6 +94,18 @@ async def retry_failed_analyses() -> None:
         logger.error(f"Error retrying failed analyses: {str(e)}\n{traceback.format_exc()}")
 
 
+async def reanalyze_listings() -> None:
+    """Reanalyze all listings."""
+    listings = await analysis_service.get_all_listings()
+    await analyze_and_save(listings)
+
+
+async def resume_analysis() -> None:
+    """Resume analysis of in progress listings."""
+    in_progress = await analysis_service.get_in_progress_listings()
+    await analyze_and_save(in_progress)
+
+
 async def get_analysis_status() -> Dict[str, Any]:
     """Get the current status of listing analysis.
 
@@ -106,7 +118,7 @@ async def get_analysis_status() -> Dict[str, Any]:
 
         # Calculate derived statistics
         total = sum(status_counts.values())
-        analyzed = status_counts.get("completed", 0)
+        completed = status_counts.get("completed", 0)
         failed = status_counts.get("failed", 0)
         pending = status_counts.get("pending", 0)
         in_progress = status_counts.get("in_progress", 0)
@@ -118,7 +130,7 @@ async def get_analysis_status() -> Dict[str, Any]:
 
         return {
             "total": total,
-            "analyzed": analyzed,
+            "completed": completed,
             "pending": pending,
             "failed": failed,
             "in_progress": in_progress,
@@ -143,6 +155,7 @@ async def change_state(listings: List[ListingDocument], status: AnalysisStatus) 
 
 
 async def analyze_and_save(listings: List[ListingDocument]) -> None:
+    """Analyze and save listings."""
     # Collect results as they come in
     logger.debug(f"Analyzing {len(listings)} listings")
     originals = []
@@ -160,3 +173,27 @@ async def analyze_and_save(listings: List[ListingDocument]) -> None:
     # Save any remaining results
     if analysis_results:
         await analysis_service.bulk_create_analyses(analysis_results)
+
+
+async def cancel_in_progress() -> int:
+    """Cancel all in-progress analysis tasks.
+
+    Returns:
+        int: Number of tasks cancelled
+    """
+    try:
+        # Get all in-progress listings
+        in_progress = await analysis_service.get_in_progress_listings()
+        if not in_progress:
+            return 0
+
+        # Mark them as pending to be retried later
+        for listing in in_progress:
+            await listing.update({"$set": {"analysis_status": AnalysisStatus.PENDING}})
+
+        logger.info(f"Cancelled {len(in_progress)} in-progress analysis tasks")
+        return len(in_progress)
+
+    except Exception as e:
+        logger.error(f"Error cancelling in-progress analyses: {str(e)}\n{traceback.format_exc()}")
+        return 0

@@ -1,7 +1,10 @@
-# Initialize API key header
+import logging
 import os
+
 from fastapi import Depends, HTTPException
 from fastapi.security import APIKeyHeader
+
+logger = logging.getLogger(__name__)
 
 
 API_KEY_NAME = "X-API-Key"

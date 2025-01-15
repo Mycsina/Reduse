@@ -1,14 +1,15 @@
+"""OLX scraper implementation."""
+
 import asyncio
 import logging
 import random
 import re
 from decimal import Decimal
 from typing import AsyncGenerator, List, cast
-
 from bs4 import BeautifulSoup, Tag
 from tqdm.asyncio import tqdm as tqdm_asyncio
 
-from ..config import SCRAPER_CONFIG
+from ..config import settings
 from ..schemas.listings import ListingDocument
 from ..utils.playwright_pool import BrowserContext, get_pool
 from .scraper_base import Scraper as BaseScraper
@@ -17,25 +18,14 @@ BASE_URL = "https://www.olx.pt/"
 
 
 class OLXScraper(BaseScraper):
-    """Scraper for OLX Portugal website.
-
-    This scraper handles both OLX listings and external listings that appear on OLX.
-    It supports concurrent scraping with a pool of browser instances and implements
-    various scraping strategies with retries and error handling.
-
-    Attributes:
-        base_url: Base URL for OLX Portugal
-        logger: Logger instance for scraper-specific logging
-        _analyzed_ids: Set of already analyzed listing IDs
-        browser_pool: PlaywrightPool instance for managing browser sessions
-    """
+    """Scraper for OLX Portugal website."""
 
     def __init__(self, max_concurrent_requests=None):
         """Initialize the OLX scraper."""
         self.base_url = BASE_URL
         self.logger = logging.getLogger(__name__)
         self._analyzed_ids = set()
-        self.browser_pool = get_pool(max_concurrent_requests or SCRAPER_CONFIG["max_concurrent_requests"])
+        self.browser_pool = get_pool(max_concurrent_requests or settings.scraper.max_concurrent_requests)
 
     async def scrape(self, url: str) -> List[ListingDocument]:
         """Scrapes all listings from a URL and fetches their details."""
@@ -60,16 +50,15 @@ class OLXScraper(BaseScraper):
         browser_context: BrowserContext,
         url: str,
         scroll_to_bottom: bool = False,
-        max_retries: int = SCRAPER_CONFIG["retries"]["max_attempts"],
-        initial_retry_delay: float = SCRAPER_CONFIG["retries"]["initial_delay"],
+        max_retries: int = 0,
+        initial_retry_delay: float = 0.0,
     ) -> str:
         """Fetches the page source using Playwright with retries."""
-        backoff_factor = SCRAPER_CONFIG["retries"]["backoff_factor"]
-        logging.debug(
-            f"Max retries: {max_retries}, initial retry delay: {initial_retry_delay}, backoff factor: {backoff_factor}"
-        )
+        max_retries = max_retries or settings.scraper.retries["max_attempts"]
+        initial_retry_delay = initial_retry_delay or settings.scraper.retries["initial_delay"]
+        backoff_factor = settings.scraper.retries["backoff_factor"]
 
-        async def _scroll_down_gradually(page, scroll_step=1000, scroll_delay_min=10, scroll_delay_max=300):
+        async def _scroll_down_gradually(page, scroll_step=500, scroll_delay_min=10, scroll_delay_max=300):
             """Scrolls a page down gradually to simulate human-like scrolling."""
             last_height = await page.evaluate("document.documentElement.scrollTop")
             total_scrolled = 0
@@ -96,13 +85,13 @@ class OLXScraper(BaseScraper):
                     self.logger.debug(f"Navigating to {url} (attempt {attempt + 1}/{max_retries})")
 
                     # Wait for either the navigation or a timeout
-                    await page.goto(url, wait_until="domcontentloaded", timeout=SCRAPER_CONFIG["timeouts"]["page_load"])
+                    await page.goto(url, wait_until="domcontentloaded", timeout=settings.scraper.timeouts["page_load"])
 
                     # If browser hasn't accepted cookies, accept them
                     if not browser_context.__annotations__.get("cookies_accepted", False):
                         self.logger.debug("Looking for cookie consent button")
                         elem = await page.wait_for_selector(
-                            "#onetrust-accept-btn-handler", timeout=SCRAPER_CONFIG["timeouts"]["cookie_consent"]
+                            "#onetrust-accept-btn-handler", timeout=settings.scraper.timeouts["cookie_consent"]
                         )
                         if elem:
                             await elem.click()
@@ -157,7 +146,7 @@ class OLXScraper(BaseScraper):
 
             # Parse each category with progress bar
             batch = []
-            batch_size = SCRAPER_CONFIG["batch_size"]["listings"]
+            batch_size = settings.scraper.batch_size["listings"]
 
             # Create progress bar for categories
             async for category in tqdm_asyncio(categories, desc="Parsing categories"):
@@ -285,9 +274,17 @@ class OLXScraper(BaseScraper):
                         title = card.find("div", {"data-cy": "ad-card-title"}).a.h4.text
                         try:
                             price = card.find("p", {"data-testid": "ad-price"}).text
-                            price_str = price.replace("€", "").replace(",", ".").split(" ")[0]
+                            # First remove the euro symbol and any whitespace
+                            price_str = price.strip().replace("€", "").strip()
+                            # Handle thousand separators: remove dots, then replace comma with dot for decimal
+                            price_str = price_str.replace(".", "").replace(",", ".")
+                            # Extract first number if there's a range
+                            match = re.search(r"\d+\.?\d*", price_str)
+                            price_str = match.group() if match else None
                             price_value = Decimal(price_str) if price_str else None
-                        except (AttributeError, ValueError):
+                            cls.logger.debug(f"Parsed price '{price}' -> '{price_str}' -> {price_value}")
+                        except (AttributeError, ValueError) as e:
+                            cls.logger.debug(f"Failed to parse price: {str(e)}")
                             price = "Unavailable"
                             price_value = None
                         photo_url = card.find("img")["src"]

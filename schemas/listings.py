@@ -2,11 +2,13 @@
 
 from decimal import Decimal, InvalidOperation
 import logging
-from typing import List, Optional
+from typing import Annotated, List, Optional
 from bson import Decimal128
 from pydantic import HttpUrl, validator, field_validator
-from beanie import Document
+from beanie import Document, Indexed
 from enum import Enum
+
+logger = logging.getLogger(__name__)
 
 
 class AnalysisStatus(str, Enum):
@@ -26,12 +28,12 @@ class ListingDocument(Document):
     """
 
     # Basic info (always populated)
-    original_id: str
-    site: str  # 'olx' or external site name
+    original_id: Annotated[str, Indexed(unique=True)]
+    site: Annotated[str, Indexed()]  # 'olx' or external site name
     title: str
     link: HttpUrl
     price_str: str  # Original price string
-    price_value: Optional[Decimal] = None  # Normalized price value
+    price_value: Annotated[Optional[Decimal], Indexed()] = None  # Normalized price value
     photo_url: Optional[HttpUrl] = None
 
     # Details (populated when fetching full listing)
@@ -39,9 +41,12 @@ class ListingDocument(Document):
 
     # Status flags
     more: bool = True  # Whether there are more details to fetch
-    analysis_status: AnalysisStatus = AnalysisStatus.PENDING
+    analysis_status: Annotated[AnalysisStatus, Indexed()] = AnalysisStatus.PENDING
     analysis_error: Optional[str] = None
-    retry_count: int = 0
+    retry_count: Annotated[int, Indexed()] = 0
+
+    # Compound index for analysis status and retry count
+    analysis_status_retry_count: Annotated[None, Indexed()] = None
 
     @field_validator("price_value", mode="before")
     def parse_price(cls, v, values):
@@ -68,16 +73,19 @@ class ListingDocument(Document):
 
     class Settings:
         name = "listings"
-        indexes = [
-            "original_id",
-            "site",
-            "analysis_status",
-            [("price_value", 1)],  # Index for price-based queries
-            [("analysis_status", 1), ("retry_count", 1)],  # Index for retry queries
-        ]
 
 
 async def save_listings(listings: List[ListingDocument]) -> None:
-    """Save listings to the database."""
+    """Save listings to the database. Deletes existing listings with the same original_id."""
+    # Deduplicate incoming listings by original_id
+    dedup_listings = {listing.original_id: listing for listing in listings}
+    listings = list(dedup_listings.values())
+    original_ids = [listing.original_id for listing in listings]
+    # Delete existing listings with the same original_id
+    await ListingDocument.find_many({"original_id": {"$in": original_ids}}).delete_many()
+    [logger.debug(f"Deleted {listing.original_id}") for listing in listings]
+    logger.info(f"Deleted {len(original_ids)} existing listings")
+    # Insert new listings
     await ListingDocument.insert_many(listings)
-    logging.info(f"Saved {len(listings)} listings")
+    [logger.debug(f"Saved {listing.original_id}") for listing in listings]
+    logger.info(f"Saved {len(listings)} listings")

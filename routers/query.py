@@ -1,12 +1,13 @@
 """Query endpoints for listings."""
 
-from typing import List, Optional, Dict, Any
+from typing import Any, Dict, List, Optional
+
 from fastapi import APIRouter, HTTPException
-from beanie.operators import And, Or, RegEx
 from pydantic import BaseModel
 
-from ..schemas.listings import ListingDocument, AnalysisStatus
+from ..logic import query as query_logic
 from ..schemas.analyzed_listings import AnalyzedListingDocument
+from ..schemas.listings import AnalysisStatus, ListingDocument
 
 
 class ListingFilter(BaseModel):
@@ -19,7 +20,15 @@ class ListingFilter(BaseModel):
     search_text: Optional[str] = None
 
 
+class AnalyzedListingWithOriginal(BaseModel):
+    """Response model for analyzed listing with its original listing."""
+
+    analyzed: AnalyzedListingDocument
+    original: ListingDocument
+
+
 router = APIRouter(prefix="/listings")
+analyzed_router = APIRouter(prefix="/analyzed")
 
 
 @router.get("/", response_model=List[ListingDocument])
@@ -29,140 +38,75 @@ async def get_listings(
     status: Optional[AnalysisStatus] = None,
     site: Optional[str] = None,
     search_text: Optional[str] = None,
+    skip: int = 0,
+    limit: int = 12,
 ):
-    """Get listings with optional filters."""
-    filters = []
-
-    if price_min is not None:
-        filters.append({"price_value": {"$gte": price_min}})
-    if price_max is not None:
-        filters.append({"price_value": {"$lte": price_max}})
-    if status:
-        filters.append(ListingDocument.analysis_status == status)
-    if site:
-        filters.append(ListingDocument.site == site)
-    if search_text:
-        text_filter = Or(
-            RegEx(ListingDocument.title, f".*{search_text}.*", "i"),
-            RegEx(ListingDocument.description, f".*{search_text}.*", "i"),
-        )
-        filters.append(text_filter)
-
-    query = {"$and": filters} if filters else {}
-    return await ListingDocument.find(query).to_list()
+    """Get listings with optional filters and pagination."""
+    return await query_logic.get_listings(
+        price_min=price_min,
+        price_max=price_max,
+        status=status,
+        site=site,
+        search_text=search_text,
+        skip=skip,
+        limit=limit,
+    )
 
 
-@router.get("/{listing_id}", response_model=ListingDocument)
+@router.get("/by_id/{listing_id}", response_model=ListingDocument)
 async def get_listing(listing_id: str):
     """Get a specific listing by ID."""
-    listing = await ListingDocument.get(listing_id)
+    listing = await query_logic.get_listing(listing_id)
     if not listing:
         raise HTTPException(status_code=404, detail="Listing not found")
     return listing
 
 
-@router.delete("/{listing_id}")
-async def delete_listing(listing_id: str):
-    """Delete a listing by ID."""
-    listing = await ListingDocument.get(listing_id)
-    if not listing:
-        raise HTTPException(status_code=404, detail="Listing not found")
-    await listing.delete()
-    return {"message": "Listing deleted"}
+@router.get("/similar/by_id/{listing_id}", response_model=List[ListingDocument])
+async def get_similar_listings(listing_id: str, limit: int = 6):
+    """Get similar listings based on analysis results."""
+    listings = await query_logic.get_similar_listings(listing_id, limit)
+    if not listings:
+        raise HTTPException(status_code=404, detail="No similar listings found")
+    return listings
 
 
-@router.put("/{listing_id}", response_model=ListingDocument)
-async def update_listing(listing_id: str, listing_data: ListingDocument):
-    """Update a listing by ID."""
-    listing = await ListingDocument.get(listing_id)
-    if not listing:
-        raise HTTPException(status_code=404, detail="Listing not found")
-
-    for field, value in listing_data.dict(exclude_unset=True).items():
-        setattr(listing, field, value)
-
-    await listing.save()
-    return listing
-
-
-@router.post("/raw", response_model=List[ListingDocument])
-async def query_listings_raw(query: Dict[str, Any]):
-    """Query listings using a raw MongoDB query.
-
-    The query should be a valid MongoDB query document.
-    Example: {"price_value": {"$gt": 1000, "$lt": 5000}}
-    """
-    try:
-        return await ListingDocument.find(query).to_list()
-    except Exception as e:
-        raise HTTPException(status_code=400, detail=f"Invalid query format: {str(e)}")
-
-
-# Analyzed Listings endpoints
-analyzed_router = APIRouter(prefix="/analyzed")
-
-
-@analyzed_router.get("/", response_model=List[AnalyzedListingDocument])
+@analyzed_router.get("/", response_model=List[AnalyzedListingWithOriginal])
 async def get_analyzed_listings(
     brand: Optional[str] = None,
     model: Optional[str] = None,
-    original_id: Optional[str] = None,
+    original_id: List[str] = [],
+    skip: int = 0,
+    limit: int = 12,
 ):
     """Get analyzed listings with optional filters."""
-    filters = []
+    if not original_id:
+        raise HTTPException(status_code=400, detail="original_id is required")
+    results = await query_logic.get_analyzed_listings(
+        brand=brand,
+        model=model,
+        original_id=original_id,
+        skip=skip,
+        limit=limit,
+    )
+    return [AnalyzedListingWithOriginal(analyzed=analyzed, original=original) for original, analyzed in results]
 
-    if brand:
-        filters.append(RegEx(AnalyzedListingDocument.brand, f".*{brand}.*", "i"))
-    if model:
-        filters.append(RegEx(AnalyzedListingDocument.model, f".*{model}.*", "i"))
-    if original_id:
-        filters.append(AnalyzedListingDocument.original_listing_id == original_id)
 
-    query = And(*filters) if filters else {}
-    return await AnalyzedListingDocument.find(query).to_list()
-
-
-@analyzed_router.get("/{analyzed_id}", response_model=AnalyzedListingDocument)
+@analyzed_router.get("/{analyzed_id}", response_model=AnalyzedListingWithOriginal)
 async def get_analyzed_listing(analyzed_id: str):
     """Get a specific analyzed listing by ID."""
-    analyzed = await AnalyzedListingDocument.get(analyzed_id)
-    if not analyzed:
+    result = await query_logic.get_analyzed_listing(analyzed_id)
+    if not result:
         raise HTTPException(status_code=404, detail="Analyzed listing not found")
-    return analyzed
+    original, analyzed = result
+    return AnalyzedListingWithOriginal(analyzed=analyzed, original=original)
 
 
-@analyzed_router.delete("/{analyzed_id}")
-async def delete_analyzed_listing(analyzed_id: str):
-    """Delete an analyzed listing by ID."""
-    analyzed = await AnalyzedListingDocument.get(analyzed_id)
-    if not analyzed:
-        raise HTTPException(status_code=404, detail="Analyzed listing not found")
-    await analyzed.delete()
-    return {"message": "Analyzed listing deleted"}
-
-
-@analyzed_router.put("/{analyzed_id}", response_model=AnalyzedListingDocument)
-async def update_analyzed_listing(analyzed_id: str, analyzed_data: AnalyzedListingDocument):
-    """Update an analyzed listing by ID."""
-    analyzed = await AnalyzedListingDocument.get(analyzed_id)
-    if not analyzed:
-        raise HTTPException(status_code=404, detail="Analyzed listing not found")
-
-    for field, value in analyzed_data.dict(exclude_unset=True).items():
-        setattr(analyzed, field, value)
-
-    await analyzed.save()
-    return analyzed
-
-
-@analyzed_router.post("/raw", response_model=List[AnalyzedListingDocument])
+@analyzed_router.post("/raw", response_model=List[AnalyzedListingWithOriginal])
 async def query_analyzed_listings_raw(query: Dict[str, Any]):
-    """Query analyzed listings using a raw MongoDB query.
-
-    The query should be a valid MongoDB query document.
-    Example: {"brand": {"$regex": "Toyota", "$options": "i"}}
-    """
+    """Query analyzed listings using a raw MongoDB query."""
     try:
-        return await AnalyzedListingDocument.find(query).to_list()
+        results = await query_logic.query_analyzed_listings_raw(query)
+        return [AnalyzedListingWithOriginal(analyzed=analyzed, original=original) for original, analyzed in results]
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"Invalid query format: {str(e)}")
