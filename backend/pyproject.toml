@@ -1,0 +1,33 @@
+[tool.poetry]
+name = "vroom"
+version = "0.1.0"
+description = ""
+authors = ["Mycsina <andremacardoso@gmail.com>"]
+readme = "README.md"
+package-mode = false
+
+[tool.poetry.dependencies]
+python = "^3.13"
+python-dotenv = "*"
+beautifulsoup4 = "*"
+fastapi = {extras = ["standard"], version = "*"}
+playwright = "*"
+google-generativeai = "*"
+grpcio = "*"
+beanie = "*"
+motor = ">=3.6.0"
+pymongo = "*"
+openai = "*"
+groq = "*"
+pydantic-settings = "*"
+tqdm = "*"
+httpx = "*"
+apscheduler = "*"
+certifi = "*"
+sse-starlette = "^2.2.1"
+
+[tool.poetry.group.dev.dependencies]
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"

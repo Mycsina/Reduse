@@ -1,0 +1,121 @@
+"""Listing query endpoints."""
+
+import logging
+from typing import Any, Dict, List, Optional
+
+from fastapi import APIRouter, HTTPException
+from pydantic import BaseModel, Field
+
+from ...schemas.analyzed_listings import AnalyzedListingDocument
+from ...schemas.listings import ListingDocument
+
+from ...logic import query as query_logic
+from ...logic import analytics as analytics_logic
+
+logger = logging.getLogger(__name__)
+
+
+class PriceFilter(BaseModel):
+    """Price filter model."""
+
+    min: Optional[float] = None
+    max: Optional[float] = None
+
+
+class ListingQuery(BaseModel):
+    """Query model for standard listing queries."""
+
+    price: Optional[PriceFilter] = None
+    search_text: Optional[str] = None
+    filter: Optional[query_logic.FilterGroup] = None
+    skip: int = Field(default=0, ge=0)
+    limit: int = Field(default=12, ge=1, le=100)
+
+
+class ListingResponse(BaseModel):
+    """Response model for listing queries."""
+
+    listing: ListingDocument
+    analysis: Optional[AnalyzedListingDocument]
+
+
+router = APIRouter(prefix="/listings")
+
+
+@router.post("/", response_model=List[ListingResponse])
+async def query_listings(query: ListingQuery):
+    """Query listings with optional analysis data."""
+    logger.debug(f"Querying listings with query: {query.model_dump_json()}")
+    try:
+        results = await query_logic.get_listings_with_analysis(
+            price_min=query.price.min if query.price else None,
+            price_max=query.price.max if query.price else None,
+            search_text=query.search_text,
+            filter_group=query.filter,
+            skip=query.skip,
+            limit=query.limit,
+        )
+        logger.debug(f"Results: {results}")
+        return [ListingResponse(listing=result[0], analysis=result[1]) for result in results]
+    except Exception as e:
+        logger.error(f"Query error: {str(e)}")
+        raise HTTPException(status_code=400, detail=f"Query error: {str(e)}")
+
+
+@router.post("/similar/{listing_id}", response_model=List[ListingResponse])
+async def get_similar_listings(
+    listing_id: str,
+    skip: int = 0,
+    limit: int = 12,
+):
+    """Get similar listings with optional analysis data."""
+    try:
+        results = await query_logic.get_similar_listings_with_analysis(
+            listing_id=listing_id,
+            skip=skip,
+            limit=limit,
+        )
+        return [ListingResponse(listing=result[0], analysis=result[1]) for result in results]
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Query error: {str(e)}")
+
+
+@router.post("/raw", response_model=List[Dict[str, Any]])
+async def query_listings_raw(
+    query: Dict[str, Any],
+    skip: int = 0,
+    limit: int = 12,
+):
+    """Query listings using a raw MongoDB query."""
+    try:
+        results = await query_logic.query_listings_with_analysis_raw(
+            query=query,
+            skip=skip,
+            limit=limit,
+        )
+        return [ListingResponse(listing=result[0], analysis=result[1]) for result in results]
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Query error: {str(e)}")
+
+
+@router.get("/by_id/{listing_id}", response_model=ListingResponse)
+async def get_listing(listing_id: str):
+    """Get a specific listing with its analysis data."""
+    result = await query_logic.get_listing_with_analysis(listing_id)
+    if not result:
+        raise HTTPException(status_code=404, detail="Listing not found")
+    return ListingResponse(listing=result[0], analysis=result[1])
+
+
+@router.get("/fields", response_model=Dict[str, List[str]])
+async def get_available_fields():
+    """Get all available fields for filtering."""
+    main_fields = ["type", "brand", "base_model", "model_variant"]
+    info_fields = await query_logic.get_distinct_info_fields()
+    return {"main_fields": main_fields, "info_fields": info_fields}
+
+
+@router.get("/models", response_model=List[dict])
+async def get_model_analytics(base_model: str):
+    """Get analytics for models with optional brand and model filters."""
+    return await analytics_logic.get_model_analytics(base_model=base_model)
