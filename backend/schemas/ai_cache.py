@@ -1,8 +1,9 @@
 """Schema for AI response caching."""
 
-from typing import Annotated
-from beanie import Document, Indexed
 from datetime import datetime
+from typing import Annotated
+
+from beanie import Document, Indexed
 
 
 class AICacheDocument(Document):

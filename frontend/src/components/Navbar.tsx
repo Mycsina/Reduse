@@ -9,7 +9,7 @@ export default function Navbar() {
           <li><Link href="/listings">Listings</Link></li>
           <li><Link href="/scrape">Scrape</Link></li>
           <li><Link href="/analysis">Analysis</Link></li>
-          <li><Link href="/schedule">Schedule</Link></li>
+          <li><Link href="/tasks">Tasks</Link></li>
         </ul>
       </div>
     </nav>

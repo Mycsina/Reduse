@@ -1,11 +1,11 @@
 """OLX scraper implementation."""
 
 import asyncio
+import json
 import logging
 import re
 from decimal import Decimal
 from typing import AsyncGenerator, List, Optional, cast
-import json
 
 from bs4 import BeautifulSoup, Tag
 from pydantic import HttpUrl
@@ -27,7 +27,9 @@ class OLXScraper(Scraper):
         self.base_url = BASE_URL
         self.logger = logging.getLogger(__name__)
         self._analyzed_ids = set()
-        self.browser_pool = get_pool(max_concurrent_requests or settings.scraper.max_concurrent_requests)
+        self.browser_pool = get_pool(
+            max_concurrent_requests or settings.scraper.max_concurrent_requests
+        )
 
     @classmethod
     def can_handle(cls, url: str) -> bool:
@@ -101,7 +103,9 @@ class OLXScraper(Scraper):
                         else:
                             price_str = "Unavailable"
                 except Exception as e:
-                    self.logger.debug(f"Failed to parse price: {e.__class__.__name__} - {str(e)}")
+                    self.logger.debug(
+                        f"Failed to parse price: {e.__class__.__name__} - {str(e)}"
+                    )
 
                 # Create listing document
                 return ListingDocument(
@@ -119,7 +123,9 @@ class OLXScraper(Scraper):
                 self.logger.error(f"Error scraping individual listing: {str(e)}")
                 return None
 
-    async def scrape(self, url: str, already_scraped_ids: Optional[List[str]] = None) -> List[ListingDocument]:
+    async def scrape(
+        self, url: str, already_scraped_ids: Optional[List[str]] = None
+    ) -> List[ListingDocument]:
         """Scrapes all listings from a URL and fetches their details.
 
         Args:
@@ -136,14 +142,24 @@ class OLXScraper(Scraper):
 
             # Get all listings first
             listings = await self._fetch_all_listings(url)
-            self.logger.info(f"Found {len(listings)} listings, fetching details in batches")
+            self.logger.info(
+                f"Found {len(listings)} listings, fetching details in batches"
+            )
 
             # Filter out already scraped listings
             if already_scraped_ids:
-                listings = [listing for listing in listings if listing.original_id not in already_scraped_ids]
+                listings = [
+                    listing
+                    for listing in listings
+                    if listing.original_id not in already_scraped_ids
+                ]
 
             # Fetch details
-            tasks = [self._fetch_listing_details(listing) for listing in listings if listing.site == "olx"]
+            tasks = [
+                self._fetch_listing_details(listing)
+                for listing in listings
+                if listing.site == "olx"
+            ]
             await tqdm_asyncio.gather(*tasks, desc="Fetching details: ")
 
             return listings
@@ -160,7 +176,9 @@ class OLXScraper(Scraper):
     ) -> str:
         """Fetches the page source using Playwright with retries."""
         max_retries = max_retries or settings.scraper.retries["max_attempts"]
-        initial_retry_delay = initial_retry_delay or settings.scraper.retries["initial_delay"]
+        initial_retry_delay = (
+            initial_retry_delay or settings.scraper.retries["initial_delay"]
+        )
         backoff_factor = settings.scraper.retries["backoff_factor"]
 
         async def _fetch():
@@ -169,16 +187,25 @@ class OLXScraper(Scraper):
                 page = None
                 try:
                     page = await browser_context.new_page()
-                    self.logger.debug(f"Navigating to {url} (attempt {attempt + 1}/{max_retries})")
+                    self.logger.debug(
+                        f"Navigating to {url} (attempt {attempt + 1}/{max_retries})"
+                    )
 
                     # Wait for either the navigation or a timeout
-                    await page.goto(url, wait_until="domcontentloaded", timeout=settings.scraper.timeouts["page_load"])
+                    await page.goto(
+                        url,
+                        wait_until="domcontentloaded",
+                        timeout=settings.scraper.timeouts["page_load"],
+                    )
 
                     # If browser hasn't accepted cookies, accept them
-                    if not browser_context.__annotations__.get("cookies_accepted", False):
+                    if not browser_context.__annotations__.get(
+                        "cookies_accepted", False
+                    ):
                         self.logger.debug("Looking for cookie consent button")
                         elem = await page.wait_for_selector(
-                            "#onetrust-accept-btn-handler", timeout=settings.scraper.timeouts["cookie_consent"]
+                            "#onetrust-accept-btn-handler",
+                            timeout=settings.scraper.timeouts["cookie_consent"],
                         )
                         if elem:
                             await elem.click()
@@ -204,7 +231,9 @@ class OLXScraper(Scraper):
                         await asyncio.sleep(retry_delay)
                         retry_delay *= backoff_factor
                     else:
-                        self.logger.error(f"All {max_retries} attempts to get page source from {url} failed: {str(e)}")
+                        self.logger.error(
+                            f"All {max_retries} attempts to get page source from {url} failed: {str(e)}"
+                        )
                         return ""
 
             return ""
@@ -233,12 +262,16 @@ class OLXScraper(Scraper):
             # Create progress bar for categories
             async for category in tqdm_asyncio(categories, desc="Parsing categories"):
                 if not isinstance(category, dict):
-                    raise ValueError(f"This should never happen: {category} is not a dictionary")
+                    raise ValueError(
+                        f"This should never happen: {category} is not a dictionary"
+                    )
                 try:
                     self.logger.info(f"Parsing category: {category['name']}")
                     listings = await self._fetch_all_listings(category["url"])
                     if listings:
-                        self.logger.info(f"Found {len(listings)} listings in category {category['name']}")
+                        self.logger.info(
+                            f"Found {len(listings)} listings in category {category['name']}"
+                        )
                         batch.extend(listings)
 
                         if len(batch) >= batch_size:
@@ -246,7 +279,9 @@ class OLXScraper(Scraper):
                             batch = []
 
                 except Exception as e:
-                    self.logger.error(f"Error parsing category {category['name']}: {str(e)}")
+                    self.logger.error(
+                        f"Error parsing category {category['name']}: {str(e)}"
+                    )
 
             # Yield any remaining listings
             if batch:
@@ -262,14 +297,18 @@ class OLXScraper(Scraper):
         self.logger.debug(f"Fetching details for listing: {listing.title}")
         async with await self.browser_pool.acquire() as browser:
             try:
-                listing_src = await self._get_page_src(browser, listing.link.unicode_string())
+                listing_src = await self._get_page_src(
+                    browser, listing.link.unicode_string()
+                )
                 listing.description = self.OLXParser._parse_description(listing_src)
                 listing.photo_urls = self.OLXParser._parse_photos(listing_src)
                 listing.more = False  # We've fetched all details
                 self.logger.info(f"Got details for listing: {listing.title}")
                 return listing
             except Exception as e:
-                self.logger.error(f"Error fetching details for listing {listing.title}: {str(e)}")
+                self.logger.error(
+                    f"Error fetching details for listing {listing.title}: {str(e)}"
+                )
                 raise
 
     async def _fetch_page_listings(self, url: str, page: int) -> List[ListingDocument]:
@@ -287,11 +326,18 @@ class OLXScraper(Scraper):
                 # Get first page and page count together
                 src = await self._get_page_src(browser, url)
                 page_count = self.OLXParser._parse_page_count(src)
-                first_page_listings = self.OLXParser._parse_listing_cards(src, self._analyzed_ids)
-                self.logger.info(f"Found {len(first_page_listings)} listings on first page")
+                first_page_listings = self.OLXParser._parse_listing_cards(
+                    src, self._analyzed_ids
+                )
+                self.logger.info(
+                    f"Found {len(first_page_listings)} listings on first page"
+                )
 
                 # Create tasks for remaining pages
-                remaining_tasks = [self._fetch_page_listings(url, page) for page in range(2, page_count + 1)]
+                remaining_tasks = [
+                    self._fetch_page_listings(url, page)
+                    for page in range(2, page_count + 1)
+                ]
 
                 if remaining_tasks:
                     # Create progress bar for remaining page fetching
@@ -299,7 +345,9 @@ class OLXScraper(Scraper):
                     self.logger.info(f"Start fetching remaining pages for {url}")
 
                     # Use tqdm_asyncio.gather with the tasks list
-                    remaining_listings = await tqdm_asyncio.gather(*remaining_tasks, desc=desc)
+                    remaining_listings = await tqdm_asyncio.gather(
+                        *remaining_tasks, desc=desc
+                    )
 
                     # Combine first page with remaining pages
                     all_listings = [first_page_listings] + remaining_listings
@@ -307,7 +355,12 @@ class OLXScraper(Scraper):
                     all_listings = [first_page_listings]
 
                 # Flatten the list of lists into a single list and filter out empty sublists
-                return [listing for sublist in all_listings if sublist for listing in sublist]
+                return [
+                    listing
+                    for sublist in all_listings
+                    if sublist
+                    for listing in sublist
+                ]
         except Exception as e:
             self.logger.error(f"Error getting all listings: {str(e)}")
             return []
@@ -338,13 +391,18 @@ class OLXScraper(Scraper):
             try:
                 soup = BeautifulSoup(src, "html.parser")
                 photo_parents = soup.find_all("div", {"data-testid": "ad-photo"})
-                return [HttpUrl(photo_parent.div.img["src"]) for photo_parent in photo_parents]
+                return [
+                    HttpUrl(photo_parent.div.img["src"])
+                    for photo_parent in photo_parents
+                ]
             except Exception as e:
                 cls.logger.error(f"Error getting photos: {str(e)}")
                 return []
 
         @classmethod
-        def _parse_listing_cards(cls, src: str, analyzed_ids: set) -> List[ListingDocument]:
+        def _parse_listing_cards(
+            cls, src: str, analyzed_ids: set
+        ) -> List[ListingDocument]:
             """Parses listing cards from HTML source without fetching details."""
             listings = []
 
@@ -358,8 +416,14 @@ class OLXScraper(Scraper):
                         link = card.find("a")["href"]
 
                         # Determine if it's an external listing
-                        is_external = not (link.startswith("/") or link.startswith(BASE_URL))
-                        site = OLXScraper._get_site_from_url(link) if is_external else "olx"
+                        is_external = not (
+                            link.startswith("/") or link.startswith(BASE_URL)
+                        )
+                        site = (
+                            OLXScraper._get_site_from_url(link)
+                            if is_external
+                            else "olx"
+                        )
 
                         # Normalize internal links
                         if not is_external and link.startswith("/"):
@@ -388,9 +452,13 @@ class OLXScraper(Scraper):
                             match = re.search(r"\d+\.?\d*", price_str)
                             price_str = match.group() if match else None
                             price_value = Decimal(price_str) if price_str else None
-                            cls.logger.debug(f"Parsed price '{price}' -> '{price_str}' -> {price_value}")
+                            cls.logger.debug(
+                                f"Parsed price '{price}' -> '{price_str}' -> {price_value}"
+                            )
                         except Exception as e:
-                            cls.logger.debug(f"Failed to parse price: {e.__class__.__name__} - {str(e)}")
+                            cls.logger.debug(
+                                f"Failed to parse price: {e.__class__.__name__} - {str(e)}"
+                            )
                             price_value = None
                         if not price_str:
                             price_str = "Unavailable"
@@ -415,7 +483,9 @@ class OLXScraper(Scraper):
 
                 internal_count = sum(1 for listing in listings if listing.site == "olx")
                 external_count = len(listings) - internal_count
-                cls.logger.debug(f"Parsed {len(listings)} listings ({internal_count} OLX, {external_count} external)")
+                cls.logger.debug(
+                    f"Parsed {len(listings)} listings ({internal_count} OLX, {external_count} external)"
+                )
                 return listings
             except Exception as e:
                 cls.logger.error(f"Error parsing listing cards: {str(e)}")
@@ -432,7 +502,9 @@ class OLXScraper(Scraper):
 
                 # Cast soup to BeautifulSoup to ensure type safety
                 soup = cast(BeautifulSoup, soup)
-                pagination = soup.find_all("li", {"data-testid": "pagination-list-item"})
+                pagination = soup.find_all(
+                    "li", {"data-testid": "pagination-list-item"}
+                )
                 if not pagination:
                     cls.logger.info("No pagination found, assuming single page")
                     return 1
@@ -446,7 +518,9 @@ class OLXScraper(Scraper):
                 cls.logger.info(f"Found {page_count} pages to scrape")
                 return page_count
             except (AttributeError, IndexError, ValueError) as e:
-                cls.logger.warning(f"Could not get page count, defaulting to 1: {str(e)}")
+                cls.logger.warning(
+                    f"Could not get page count, defaulting to 1: {str(e)}"
+                )
                 return 1
             except Exception as e:
                 cls.logger.error(f"Unexpected error getting page count: {str(e)}")
@@ -457,7 +531,9 @@ class OLXScraper(Scraper):
             """Extracts category links from the homepage."""
             try:
                 soup = BeautifulSoup(src, "html.parser")
-                categories_menu = soup.find("div", {"data-testid": "home-categories-menu"})
+                categories_menu = soup.find(
+                    "div", {"data-testid": "home-categories-menu"}
+                )
                 if not categories_menu:
                     return []
 
@@ -473,7 +549,11 @@ class OLXScraper(Scraper):
 
                     name = link.find("p")
                     categories.append(
-                        {"name": name.text if name else "Unknown", "url": href, "id": link.get("data-check", "unknown")}
+                        {
+                            "name": name.text if name else "Unknown",
+                            "url": href,
+                            "id": link.get("data-check", "unknown"),
+                        }
                     )
 
                 return categories

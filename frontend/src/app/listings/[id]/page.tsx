@@ -2,7 +2,7 @@ import { notFound } from "next/navigation";
 import { Metadata } from "next";
 import { apiClient } from "@/lib/api-client";
 import ListingContent from "./ListingContent";
-import { AnalysisStatus } from "@/lib/types";
+import { AnalysisStatus, Listing, AnalyzedListing } from "@/lib/types";
 import UpdateStatsButton from "./UpdateStatsButton";
 
 export const dynamic = "force-dynamic";
@@ -12,29 +12,39 @@ export const metadata: Metadata = {
   description: "View detailed information about a listing",
 };
 
+interface ListingResponse {
+  listing: Listing;
+  analysis: AnalyzedListing | null;
+}
+
+interface SimilarListingResponse {
+  listing: Listing;
+  analysis: AnalyzedListing | null;
+}
+
 export default async function ListingPage({
   params,
 }: {
   params: { id: string };
 }) {
-  const aw_params = await params;
-  const id = aw_params.id;
+  const resolvedParams = await params;
+  const id = resolvedParams.id;
 
   try {
     // Fetch listing and its analysis
-    const listingResponse = await apiClient.getListing(id);
+    const listingResponse = (await apiClient.getListing(id)) as ListingResponse;
     const listing = listingResponse.listing;
     const analysis = listingResponse.analysis;
 
     // Fetch initial similar listings
     const initialSimilarListingsResponse =
       listing.analysis_status === AnalysisStatus.COMPLETED
-        ? await apiClient.getSimilarListings(
+        ? ((await apiClient.getSimilarListings(
             id,
             ["type", "brand", "base_model", "model_variant"],
             0,
             10
-          )
+          )) as SimilarListingResponse[])
         : [];
 
     const initialSimilarListings = initialSimilarListingsResponse.map(
@@ -47,10 +57,27 @@ export default async function ListingPage({
           analysis !== null
       );
 
-    // Fetch model analytics for all relevant models
-    const modelAnalytics = analysis?.base_model
-      ? await apiClient.getModelAnalytics(analysis.base_model)
-      : [];
+    // Fetch current model stats if we have a base model
+    const modelStats = analysis?.base_model
+      ? await apiClient.getCurrentModelStats(analysis.base_model)
+      : null;
+
+    // Convert model stats to the expected format
+    const modelAnalytics =
+      modelStats && analysis?.brand && analysis?.base_model
+        ? [
+            {
+              brand: analysis.brand,
+              base_model: analysis.base_model,
+              count: modelStats.sample_size,
+              avg_price: modelStats.avg_price,
+              median_price: modelStats.median_price,
+              min_price: modelStats.min_price,
+              max_price: modelStats.max_price,
+              timestamp: modelStats.timestamp,
+            },
+          ]
+        : [];
 
     return (
       <>

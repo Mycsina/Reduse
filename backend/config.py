@@ -1,10 +1,11 @@
 """Application-wide configuration settings."""
 
 from pathlib import Path
-from typing import Dict, Any
+from typing import Any, Dict
+
+from dotenv import load_dotenv
 from pydantic import Field, SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
-from dotenv import load_dotenv
 
 # Load environment variables
 load_dotenv(override=True)
@@ -45,7 +46,7 @@ class DatabaseSettings(BaseSettings):
 class AISettings(BaseSettings):
     """AI-related settings."""
 
-    gemini_api_key: SecretStr = Field(default="", env="GEMINI_API_KEY")  # type: ignore
+    google_api_key: SecretStr = Field(default="", env="GOOGLE_API_KEY")  # type: ignore
     openai_api_key: SecretStr = Field(default="", env="OPENAI_API_KEY")  # type: ignore
     groq_api_key: SecretStr = Field(default="", env="GROQ_API_KEY")  # type: ignore
     default_model: str = Field(default="gemini-2.0-flash-exp")
@@ -108,6 +109,13 @@ class LoggingSettings(BaseSettings):
             "pymongo": "WARNING",
             "watchfiles": "WARNING",
             "grpclib": "WARNING",
+            "pymongo.topology": "WARNING",  # Suppress MongoDB topology logs
+            "pymongo.server": "WARNING",  # Suppress MongoDB server logs
+            "pymongo.connection": "WARNING",  # Suppress MongoDB connection logs
+            "pymongo.monitoring": "WARNING",  # Suppress MongoDB monitoring logs
+            "sse_starlette": "WARNING",  # Suppress all SSE-related logs
+            "sse_starlette.sse": "WARNING",  # Suppress specific SSE debug logs
+            "watchfiles.main": "WARNING",  # Suppress watchfiles logs
         }
     )
 

@@ -16,7 +16,9 @@ async def get_analysis_status(_: str = Depends(verify_api_key)):
 
 
 @router.post("/retry-failed")
-async def retry_failed_analyses(background_tasks: BackgroundTasks, _: str = Depends(verify_api_key)):
+async def retry_failed_analyses(
+    background_tasks: BackgroundTasks, _: str = Depends(verify_api_key)
+):
     """Retry failed analyses."""
     status = await analysis.get_analysis_status()
 
@@ -29,12 +31,18 @@ async def retry_failed_analyses(background_tasks: BackgroundTasks, _: str = Depe
 
 
 @router.post("/start")
-async def start_analysis(background_tasks: BackgroundTasks, _: str = Depends(verify_api_key)):
+async def start_analysis(
+    background_tasks: BackgroundTasks, _: str = Depends(verify_api_key)
+):
     """Start analysis of pending listings."""
     status = await analysis.get_analysis_status()
 
     if status["pending"] == 0:
-        return {"message": "No pending listings to analyze.", "can_start": False, **status}
+        return {
+            "message": "No pending listings to analyze.",
+            "can_start": False,
+            **status,
+        }
 
     if not status["can_process"]:
         return {
@@ -54,19 +62,31 @@ async def start_analysis(background_tasks: BackgroundTasks, _: str = Depends(ver
 
 
 @router.post("/resume")
-async def resume_analysis(background_tasks: BackgroundTasks, _: str = Depends(verify_api_key)):
+async def resume_analysis(
+    background_tasks: BackgroundTasks, _: str = Depends(verify_api_key)
+):
     """Resume analysis of in progress listings."""
     status = await analysis.get_analysis_status()
 
     if status["in_progress"] == 0:
-        return {"message": "No in-progress listings to resume.", "can_resume": False, **status}
+        return {
+            "message": "No in-progress listings to resume.",
+            "can_resume": False,
+            **status,
+        }
 
     background_tasks.add_task(analysis.resume_analysis)
-    return {"message": f"Resuming analysis of {status['in_progress']} listings.", "can_resume": True, **status}
+    return {
+        "message": f"Resuming analysis of {status['in_progress']} listings.",
+        "can_resume": True,
+        **status,
+    }
 
 
 @router.post("/reanalyze")
-async def reanalyze_listings(background_tasks: BackgroundTasks, _: str = Depends(verify_api_key)):
+async def reanalyze_listings(
+    background_tasks: BackgroundTasks, _: str = Depends(verify_api_key)
+):
     """Reanalyze all listings."""
     background_tasks.add_task(analysis.reanalyze_listings)
     return {"message": "Reanalyzing all listings."}
@@ -81,11 +101,16 @@ async def cancel_analysis(_: str = Depends(verify_api_key)):
         return {"message": "No analysis tasks in progress.", "cancelled": 0}
 
     cancelled = await analysis.cancel_in_progress()
-    return {"message": f"Cancelled {cancelled} in-progress analysis tasks.", "cancelled": cancelled}
+    return {
+        "message": f"Cancelled {cancelled} in-progress analysis tasks.",
+        "cancelled": cancelled,
+    }
 
 
 @router.post("/regenerate-embeddings")
-async def regenerate_embeddings(background_tasks: BackgroundTasks, _: str = Depends(verify_api_key)):
+async def regenerate_embeddings(
+    background_tasks: BackgroundTasks, _: str = Depends(verify_api_key)
+):
     """Regenerate embeddings for all completed analyses using the latest model."""
     background_tasks.add_task(analysis.regenerate_embeddings)
     return {"message": "Started regenerating embeddings for all completed analyses"}

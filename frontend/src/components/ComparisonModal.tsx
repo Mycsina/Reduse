@@ -14,13 +14,24 @@ import { ChevronLeft, ChevronRight, ImageIcon } from "lucide-react";
 import { useState, useEffect, useCallback } from "react";
 import { apiClient } from "@/lib/api-client";
 import { useRouter } from "next/navigation";
-import { cn } from "@/lib/utils";
+import PriceHistoryModal from "@/components/PriceHistoryModal";
+import { toast } from "@/hooks/use-toast";
 
 interface ComparisonData {
   field: string;
   current: string;
   similar: string;
   matches: boolean;
+}
+
+interface PriceStats {
+  model: string;
+  avg_price: number;
+  min_price: number;
+  max_price: number;
+  median_price: number;
+  sample_size: number;
+  timestamp: string;
 }
 
 interface ComparisonModalProps {
@@ -115,6 +126,10 @@ export default function ComparisonModal({
     listings: Listing[];
     analyses: AnalyzedListing[];
   } | null>(null);
+  const [showPriceHistory, setShowPriceHistory] = useState<{
+    brand: string;
+    baseModel: string;
+  } | null>(null);
 
   const router = useRouter();
 
@@ -187,11 +202,13 @@ export default function ComparisonModal({
 
       if (newListingsResponse.length > 0) {
         const newListings = newListingsResponse.map(
-          (response) => response.listing
+          (response: { listing: any }) => response.listing
         );
         const newAnalyses = newListingsResponse
-          .map((response) => response.analysis)
-          .filter((analysis): analysis is AnalyzedListing => analysis !== null);
+          .map((response: { analysis: any }) => response.analysis)
+          .filter(
+            (analysis: any): analysis is AnalyzedListing => analysis !== null
+          );
 
         if (newListings.length > 0) {
           setNextBatch({
@@ -246,17 +263,6 @@ export default function ComparisonModal({
   const similarListing = similarListings[currentIndex];
   const similarAnalysis = similarAnalyses[currentIndex];
 
-  const currentModelAnalytics = modelAnalytics?.find(
-    (m) =>
-      m.brand === currentAnalysis?.brand &&
-      m.base_model === currentAnalysis?.base_model
-  );
-  const similarModelAnalytics = modelAnalytics?.find(
-    (m) =>
-      m.brand === similarAnalysis.brand &&
-      m.base_model === similarAnalysis.base_model
-  );
-
   const comparisonData = getComparisonData(
     currentListing,
     currentAnalysis,
@@ -284,50 +290,106 @@ export default function ComparisonModal({
 
   const renderPriceInfo = (
     listing: Listing,
-    analytics: ModelAnalytics | undefined
-  ) => (
-    <div className="text-center">
-      <p className="text-lg font-bold text-primary">
-        {formatPrice(listing.price_value)}
-      </p>
-      {analytics && analytics.count >= 3 ? (
-        <div className="text-sm text-muted-foreground space-y-1">
-          <p>Model median: {formatPrice(analytics.median_price || 0)}</p>
-          <p>Model avg: {formatPrice(analytics.avg_price || 0)}</p>
-          <div className="text-xs flex justify-center items-center gap-1">
-            <span>{formatPrice(analytics.min_price || 0)}</span>
-            <span className="h-px w-3 bg-muted-foreground"></span>
-            <span>{formatPrice(analytics.max_price || 0)}</span>
-          </div>
-          <p className="text-xs">Based on {analytics.count} listings</p>
-        </div>
-      ) : analytics?.count ? (
-        <p className="text-xs text-muted-foreground">
-          Not enough data for reliable statistics
-          <br />
-          (only {analytics.count}{" "}
-          {analytics.count === 1 ? "listing" : "listings"})
+    analysis: AnalyzedListing | null
+  ) => {
+    const [stats, setStats] = useState<PriceStats | null>(null);
+    const [isUpdating, setIsUpdating] = useState(false);
+
+    useEffect(() => {
+      if (analysis?.base_model) {
+        apiClient
+          .getCurrentModelStats(analysis.base_model)
+          .then((data) => {
+            setStats(data);
+          })
+          .catch((error) => {
+            console.error("Failed to fetch model stats:", error);
+          });
+      }
+    }, [analysis?.base_model]);
+
+    const handleUpdateStats = async () => {
+      setIsUpdating(true);
+      try {
+        await apiClient.updatePriceStats();
+        toast({
+          title: "Updating price statistics",
+          description: "This may take a few minutes",
+        });
+        // Refetch after a delay to allow for background processing
+        setTimeout(() => {
+          if (analysis?.base_model) {
+            apiClient
+              .getCurrentModelStats(analysis.base_model)
+              .then((data) => setStats(data))
+              .catch((error) =>
+                console.error("Failed to fetch updated stats:", error)
+              );
+          }
+        }, 5000); // Wait 5 seconds before refetching
+      } catch (error) {
+        toast({
+          title: "Failed to update statistics",
+          description:
+            error instanceof Error ? error.message : "Unknown error occurred",
+          variant: "destructive",
+        });
+      } finally {
+        setIsUpdating(false);
+      }
+    };
+
+    return (
+      <div className="text-center">
+        <p className="text-lg font-bold text-primary">
+          {formatPrice(listing.price_value)}
         </p>
-      ) : (
-        <div className="text-xs text-muted-foreground mt-1">
-          <p>No price statistics available</p>
-          <Button
-            variant="ghost"
-            size="sm"
-            className="text-xs h-6 mt-1"
-            onClick={() => {
-              const button = document.querySelector(
-                "[data-update-stats]"
-              ) as HTMLButtonElement | null;
-              if (button) button.click();
-            }}
-          >
-            Update Stats
-          </Button>
-        </div>
-      )}
-    </div>
-  );
+        {stats && stats.sample_size >= 3 ? (
+          <div className="text-sm text-muted-foreground space-y-1">
+            <Button
+              variant="ghost"
+              size="sm"
+              className="text-sm p-0 h-auto hover:bg-transparent"
+              onClick={() => {
+                if (analysis?.brand && analysis?.base_model) {
+                  setShowPriceHistory({
+                    brand: analysis.brand,
+                    baseModel: analysis.base_model,
+                  });
+                }
+              }}
+            >
+              <p>Model median: {formatPrice(stats.median_price)}</p>
+            </Button>
+            <p className="text-xs">Based on {stats.sample_size} listings</p>
+            <p className="text-xs text-muted-foreground">
+              Last updated: {new Date(stats.timestamp).toLocaleString()}
+            </p>
+          </div>
+        ) : stats?.sample_size ? (
+          <p className="text-xs text-muted-foreground">
+            Not enough data for reliable statistics
+            <br />
+            (only {stats.sample_size}{" "}
+            {stats.sample_size === 1 ? "listing" : "listings"})
+          </p>
+        ) : (
+          <div className="text-xs text-muted-foreground mt-1">
+            <p>No price statistics available</p>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="text-xs h-6 mt-1"
+              onClick={handleUpdateStats}
+              disabled={isUpdating}
+            >
+              {isUpdating ? "Updating..." : "Update Stats"}
+            </Button>
+          </div>
+        )}
+      </div>
+    );
+  };
 
   const handleListingClick = (listingId: string) => {
     window.location.href = `/listings/${listingId}`;
@@ -335,69 +397,34 @@ export default function ComparisonModal({
   };
 
   return (
-    <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="max-w-[800px] max-h-[90vh] overflow-y-auto">
-        <DialogHeader>
-          <DialogTitle>Listing Comparison</DialogTitle>
-        </DialogHeader>
+    <>
+      <Dialog open={isOpen} onOpenChange={onClose}>
+        <DialogContent className="max-w-[800px] max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Listing Comparison</DialogTitle>
+          </DialogHeader>
 
-        <div className="grid grid-cols-2 gap-6">
-          {/* Current Listing */}
-          <div
-            className="group cursor-pointer"
-            onClick={() => handleListingClick(currentListing._id)}
-          >
+          <div className="grid grid-cols-2 gap-6">
+            {/* Current Listing */}
             <div>
-              <div className="relative aspect-video w-full mb-2">
-                <Image
-                  src={getListingImage(currentListing)}
-                  alt={currentListing.title}
-                  fill
-                  className={`object-cover rounded-lg transition-opacity group-hover:opacity-90 ${
-                    !currentListing.photo_urls ||
-                    currentListing.photo_urls.length === 0
-                      ? "bg-muted p-4 object-contain"
-                      : ""
-                  }`}
-                />
-                {(!currentListing.photo_urls ||
-                  currentListing.photo_urls.length === 0) && (
-                  <div className="absolute inset-0 flex items-center justify-center text-muted-foreground">
-                    <ImageIcon className="w-12 h-12" />
-                  </div>
-                )}
-              </div>
-              <div className="text-center">
-                <p className="font-semibold text-sm mb-1 h-10 line-clamp-2 group-hover:text-primary transition-colors">
-                  {currentListing.title}
-                </p>
-                {renderPriceInfo(currentListing, currentModelAnalytics)}
-              </div>
-            </div>
-          </div>
-
-          {/* Similar Listing */}
-          <div className="relative">
-            <div
-              className="group cursor-pointer"
-              onClick={() => handleListingClick(similarListing._id)}
-              onMouseEnter={() => prefetchListingData(similarListing._id)}
-            >
               <div>
-                <div className="relative aspect-video w-full mb-2">
+                <div
+                  className="relative aspect-video w-full mb-2 group cursor-pointer"
+                  onClick={() => handleListingClick(currentListing._id)}
+                >
                   <Image
-                    src={getListingImage(similarListing)}
-                    alt={similarListing.title}
+                    src={getListingImage(currentListing)}
+                    alt={currentListing.title}
                     fill
                     className={`object-cover rounded-lg transition-opacity group-hover:opacity-90 ${
-                      !similarListing.photo_urls ||
-                      similarListing.photo_urls.length === 0
+                      !currentListing.photo_urls ||
+                      currentListing.photo_urls.length === 0
                         ? "bg-muted p-4 object-contain"
                         : ""
                     }`}
                   />
-                  {(!similarListing.photo_urls ||
-                    similarListing.photo_urls.length === 0) && (
+                  {(!currentListing.photo_urls ||
+                    currentListing.photo_urls.length === 0) && (
                     <div className="absolute inset-0 flex items-center justify-center text-muted-foreground">
                       <ImageIcon className="w-12 h-12" />
                     </div>
@@ -405,89 +432,134 @@ export default function ComparisonModal({
                 </div>
                 <div className="text-center">
                   <p className="font-semibold text-sm mb-1 h-10 line-clamp-2 group-hover:text-primary transition-colors">
-                    {similarListing.title}
+                    {currentListing.title}
                   </p>
-                  {renderPriceInfo(similarListing, similarModelAnalytics)}
+                  {renderPriceInfo(currentListing, currentAnalysis)}
                 </div>
               </div>
             </div>
 
-            {/* Navigation Buttons */}
-            <div className="absolute inset-y-0 -left-4 -right-4 flex items-center justify-between pointer-events-none">
-              <Button
-                variant="ghost"
-                size="icon"
-                className={`pointer-events-auto ${
-                  canGoPrev
-                    ? "opacity-100 hover:bg-background/80"
-                    : "opacity-0 cursor-not-allowed"
-                }`}
-                onClick={handlePrev}
-                disabled={!canGoPrev}
+            {/* Similar Listing */}
+            <div className="relative">
+              <div
+                className="group cursor-pointer"
+                onClick={() => handleListingClick(similarListing._id)}
+                onMouseEnter={() => prefetchListingData(similarListing._id)}
               >
-                <ChevronLeft className="h-4 w-4" />
-                <span className="sr-only">Previous similar listing</span>
-              </Button>
-              <Button
-                variant="ghost"
-                size="icon"
-                className={`pointer-events-auto ${
-                  canGoNext
-                    ? "opacity-100 hover:bg-background/80"
-                    : "opacity-0 cursor-not-allowed"
-                }`}
-                onClick={handleNext}
-                disabled={!canGoNext}
-              >
-                <ChevronRight className="h-4 w-4" />
-                <span className="sr-only">Next similar listing</span>
-              </Button>
-            </div>
-          </div>
-        </div>
-
-        {/* Matching Features */}
-        {matchingFeatures.length > 0 && (
-          <div className="mt-6">
-            <h3 className="text-lg font-semibold mb-3">Matching Features</h3>
-            <div className="space-y-2">
-              {matchingFeatures.map((feature) => (
-                <div key={feature.field} className="text-center">
-                  <p className="text-sm text-muted-foreground capitalize mb-1">
-                    {feature.field}
-                  </p>
-                  <p className="font-medium">{feature.current}</p>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {/* Different Features */}
-        {nonMatchingFeatures.length > 0 && (
-          <div className="mt-6">
-            <h3 className="text-lg font-semibold mb-3">Different Features</h3>
-            <div className="space-y-4">
-              {nonMatchingFeatures.map((feature) => (
-                <div key={feature.field} className="grid grid-cols-2 gap-6">
+                <div>
+                  <div className="relative aspect-video w-full mb-2">
+                    <Image
+                      src={getListingImage(similarListing)}
+                      alt={similarListing.title}
+                      fill
+                      className={`object-cover rounded-lg transition-opacity group-hover:opacity-90 ${
+                        !similarListing.photo_urls ||
+                        similarListing.photo_urls.length === 0
+                          ? "bg-muted p-4 object-contain"
+                          : ""
+                      }`}
+                    />
+                    {(!similarListing.photo_urls ||
+                      similarListing.photo_urls.length === 0) && (
+                      <div className="absolute inset-0 flex items-center justify-center text-muted-foreground">
+                        <ImageIcon className="w-12 h-12" />
+                      </div>
+                    )}
+                  </div>
                   <div className="text-center">
+                    <p className="font-semibold text-sm mb-1 h-10 line-clamp-2 group-hover:text-primary transition-colors">
+                      {similarListing.title}
+                    </p>
+                    {renderPriceInfo(similarListing, similarAnalysis)}
+                  </div>
+                </div>
+              </div>
+
+              {/* Navigation Buttons */}
+              <div className="absolute inset-y-0 -left-4 -right-4 flex items-center justify-between pointer-events-none">
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className={`pointer-events-auto ${
+                    canGoPrev
+                      ? "opacity-100 hover:bg-background/80"
+                      : "opacity-0 cursor-not-allowed"
+                  }`}
+                  onClick={handlePrev}
+                  disabled={!canGoPrev}
+                >
+                  <ChevronLeft className="h-4 w-4" />
+                  <span className="sr-only">Previous similar listing</span>
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className={`pointer-events-auto ${
+                    canGoNext
+                      ? "opacity-100 hover:bg-background/80"
+                      : "opacity-0 cursor-not-allowed"
+                  }`}
+                  onClick={handleNext}
+                  disabled={!canGoNext}
+                >
+                  <ChevronRight className="h-4 w-4" />
+                  <span className="sr-only">Next similar listing</span>
+                </Button>
+              </div>
+            </div>
+          </div>
+
+          {/* Matching Features */}
+          {matchingFeatures.length > 0 && (
+            <div className="mt-6">
+              <h3 className="text-lg font-semibold mb-3">Matching Features</h3>
+              <div className="space-y-2">
+                {matchingFeatures.map((feature) => (
+                  <div key={feature.field} className="text-center">
                     <p className="text-sm text-muted-foreground capitalize mb-1">
                       {feature.field}
                     </p>
                     <p className="font-medium">{feature.current}</p>
                   </div>
-                  <div className="text-center">
-                    <p className="text-sm text-muted-foreground capitalize mb-1">
-                      {feature.field}
-                    </p>
-                    <p className="font-medium">{feature.similar}</p>
-                  </div>
-                </div>
-              ))}
+                ))}
+              </div>
             </div>
-          </div>
-        )}
-      </DialogContent>
-    </Dialog>
+          )}
+
+          {/* Different Features */}
+          {nonMatchingFeatures.length > 0 && (
+            <div className="mt-6">
+              <h3 className="text-lg font-semibold mb-3">Different Features</h3>
+              <div className="space-y-4">
+                {nonMatchingFeatures.map((feature) => (
+                  <div key={feature.field} className="grid grid-cols-2 gap-6">
+                    <div className="text-center">
+                      <p className="text-sm text-muted-foreground capitalize mb-1">
+                        {feature.field}
+                      </p>
+                      <p className="font-medium">{feature.current}</p>
+                    </div>
+                    <div className="text-center">
+                      <p className="text-sm text-muted-foreground capitalize mb-1">
+                        {feature.field}
+                      </p>
+                      <p className="font-medium">{feature.similar}</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+      {showPriceHistory && (
+        <PriceHistoryModal
+          isOpen={true}
+          onClose={() => setShowPriceHistory(null)}
+          brand={showPriceHistory.brand}
+          baseModel={showPriceHistory.baseModel}
+        />
+      )}
+    </>
   );
 }

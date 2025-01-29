@@ -89,7 +89,9 @@ class OAuthManager:
         }
 
         try:
-            response = await self.client.post(self.token_url, headers=headers, data=data)
+            response = await self.client.post(
+                self.token_url, headers=headers, data=data
+            )
             if response.status_code != 200:
                 raise TokenError(f"Failed to get access token: {response.text}")
             result = response.json()
@@ -127,9 +129,12 @@ class OAuthManager:
 
                 self._access_token = token
                 expires_in = int(result.get("expires_in", 3600))  # Default to 1 hour
-                self._token_expiry = now + timedelta(seconds=expires_in - self.safety_margin)
+                self._token_expiry = now + timedelta(
+                    seconds=expires_in - self.safety_margin
+                )
                 self.logger.debug(
-                    f"Got new token, expires in {expires_in} seconds " f"(with {self.safety_margin}s safety margin)"
+                    f"Got new token, expires in {expires_in} seconds "
+                    f"(with {self.safety_margin}s safety margin)"
                 )
                 return token
 

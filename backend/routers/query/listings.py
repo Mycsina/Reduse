@@ -1,16 +1,14 @@
 """Listing query endpoints."""
 
 import logging
-from typing import Any, Dict, List, Optional
+from typing import Dict, List, Optional
 
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
-from ...schemas.analyzed_listings import AnalyzedListingDocument
-from ...schemas.listings import ListingDocument
-
 from ...logic import query as query_logic
-from ...logic import analytics as analytics_logic
+from ...schemas.analysis import AnalyzedListingDocument
+from ...schemas.listings import ListingDocument
 
 logger = logging.getLogger(__name__)
 
@@ -56,9 +54,11 @@ async def query_listings(query: ListingQuery):
             limit=query.limit,
         )
         logger.debug(f"Results: {results}")
-        return [ListingResponse(listing=result[0], analysis=result[1]) for result in results]
+        return [
+            ListingResponse(listing=result[0], analysis=result[1]) for result in results
+        ]
     except Exception as e:
-        logger.error(f"Query error: {str(e)}")
+        logger.error(f"Query error: {e}")
         raise HTTPException(status_code=400, detail=f"Query error: {str(e)}")
 
 
@@ -75,25 +75,9 @@ async def get_similar_listings(
             skip=skip,
             limit=limit,
         )
-        return [ListingResponse(listing=result[0], analysis=result[1]) for result in results]
-    except Exception as e:
-        raise HTTPException(status_code=400, detail=f"Query error: {str(e)}")
-
-
-@router.post("/raw", response_model=List[Dict[str, Any]])
-async def query_listings_raw(
-    query: Dict[str, Any],
-    skip: int = 0,
-    limit: int = 12,
-):
-    """Query listings using a raw MongoDB query."""
-    try:
-        results = await query_logic.query_listings_with_analysis_raw(
-            query=query,
-            skip=skip,
-            limit=limit,
-        )
-        return [ListingResponse(listing=result[0], analysis=result[1]) for result in results]
+        return [
+            ListingResponse(listing=result[0], analysis=result[1]) for result in results
+        ]
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"Query error: {str(e)}")
 
@@ -113,9 +97,3 @@ async def get_available_fields():
     main_fields = ["type", "brand", "base_model", "model_variant"]
     info_fields = await query_logic.get_distinct_info_fields()
     return {"main_fields": main_fields, "info_fields": info_fields}
-
-
-@router.get("/models", response_model=List[dict])
-async def get_model_analytics(base_model: str):
-    """Get analytics for models with optional brand and model filters."""
-    return await analytics_logic.get_model_analytics(base_model=base_model)

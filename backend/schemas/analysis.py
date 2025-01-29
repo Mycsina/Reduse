@@ -1,6 +1,7 @@
 """Schema for analyzed listings."""
 
 from typing import Annotated, Any, Dict, List
+
 from beanie import Document, Indexed, PydanticObjectId
 from pymongo import GEOSPHERE
 

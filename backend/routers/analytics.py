@@ -1,52 +1,41 @@
 """Analytics endpoints."""
 
-from decimal import Decimal
-from datetime import datetime
+import logging
 from typing import List, Optional
 
-from bson import Decimal128
 from fastapi import APIRouter, BackgroundTasks, Depends
-from pydantic import BaseModel, field_validator
 
+from ..schemas.analytics import ModelPriceStats
 from ..security import verify_api_key
-from ..services.analytics_service import get_model_price_history, update_model_price_stats
-from ..utils.utils import _to_decimal
+from ..services.analytics import (
+    get_current_model_price_stats,
+    get_model_price_history,
+    update_model_price_stats,
+)
 
-
-class ModelPriceStatsResponse(BaseModel):
-    """Response model for model price statistics."""
-
-    model: str
-    avg_price: Decimal
-    min_price: Decimal
-    max_price: Decimal
-    median_price: Decimal
-    sample_size: int
-    timestamp: datetime
-
-    @field_validator("avg_price", "min_price", "max_price", "median_price", mode="before")
-    @classmethod
-    def validate_price(cls, value: Decimal128) -> Optional[Decimal]:
-        """Validate price."""
-        return _to_decimal(value)
-
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/analytics")
 
 
-@router.get("/current/{base_model}", response_model=Optional[ModelPriceStatsResponse])
-async def get_current_model_stats(base_model: str):
+@router.get("/current/{base_model}", response_model=Optional[ModelPriceStats])
+async def get_current_model_stats(base_model: str) -> Optional[ModelPriceStats]:
     """Get current price statistics for a specific model."""
-    stats = await get_model_price_history(base_model=base_model, days=1, limit=1)
-    return stats[0] if stats else None
+    if base_model == "null":
+        return None
+    result = await get_current_model_price_stats(base_model=base_model)
+    if not result:
+        logger.error(f"No price stats found for model: {base_model}")
+        return None
+    return result
 
 
-@router.get("/history/{base_model}", response_model=List[ModelPriceStatsResponse])
+@router.get("/history/{base_model}", response_model=List[ModelPriceStats])
 async def get_model_stats_history(
     base_model: str,
     days: int = 30,
     limit: Optional[int] = None,
-):
+) -> List[ModelPriceStats]:
     """Get price statistics history for a specific model."""
     return await get_model_price_history(base_model=base_model, days=days, limit=limit)
 

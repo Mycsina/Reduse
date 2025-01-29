@@ -16,6 +16,7 @@ import { CronSelector } from "@/components/ui/cronSelector";
 import { toast } from "@/hooks/use-toast";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
+import { apiClient } from "@/lib/api-client";
 
 type JobType = "scrape" | "olx_scrape" | "analysis" | "maintenance";
 
@@ -94,54 +95,38 @@ export default function ScheduleForm() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    let endpoint = "";
-    let configToSend: Partial<ConfigByType[JobType]> = { ...formData.config };
-
-    switch (formData.jobType) {
-      case "scrape":
-        endpoint = "/api/schedule/scrape";
-        // Filter out empty URLs
-        configToSend = {
-          ...configToSend,
-          urls: formData.config.urls?.filter((url) => url),
-        };
-        break;
-      case "olx_scrape":
-        endpoint = "/api/schedule/scrape/olx";
-        break;
-      case "analysis":
-        endpoint = "/api/schedule/analysis";
-        break;
-      case "maintenance":
-        endpoint = "/api/schedule/maintenance";
-        break;
-      default:
-        toast({ title: "Please select a job type", variant: "destructive" });
-        return;
-    }
-
     try {
-      const res = await fetch(endpoint, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(configToSend),
-      });
+      let response;
+      const { jobType, config } = formData;
 
-      if (res.ok) {
-        toast({ title: "Schedule created successfully" });
-        router.refresh();
-      } else {
-        const error = await res.json();
-        toast({
-          title: "Failed to create schedule",
-          description: error.detail || "Unknown error occurred",
-          variant: "destructive",
-        });
+      switch (jobType) {
+        case "scrape":
+          response = await apiClient.scheduleUrlScraping({
+            ...config,
+            urls: config.urls?.filter((url) => url) || [],
+          });
+          break;
+        case "olx_scrape":
+          response = await apiClient.scheduleOlxScraping(config);
+          break;
+        case "analysis":
+          response = await apiClient.scheduleAnalysis(config);
+          break;
+        case "maintenance":
+          response = await apiClient.scheduleMaintenance(config);
+          break;
+        default:
+          toast({ title: "Please select a job type", variant: "destructive" });
+          return;
       }
+
+      toast({ title: "Schedule created successfully" });
+      router.refresh();
     } catch (error) {
       toast({
         title: "Failed to create schedule",
-        description: "Network error occurred",
+        description:
+          error instanceof Error ? error.message : "Unknown error occurred",
         variant: "destructive",
       });
     }
@@ -380,8 +365,6 @@ export default function ScheduleForm() {
           />
         </div>
       </div>
-
-      
 
       <Button type="submit" className="w-full">
         Create Schedule

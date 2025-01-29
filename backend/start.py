@@ -1,48 +1,63 @@
-"""Main FastAPI application."""
+"""FastAPI application entry point."""
 
 import logging
+from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
-from fastapi.concurrency import asynccontextmanager
 from fastapi.middleware.cors import CORSMiddleware
 
 from .db import init_db
-from .routers import analysis, query, schedule, scrape, analytics
-from .routers.schedule import scheduler
-from .utils.logging_config import setup_logging
+from .routers import analysis, analytics, query, schedule, scrape
+from .tasks.scheduler import start_scheduler
+from .utils.logging_config import (
+    EndpointLoggingRoute,
+    RequestLoggingMiddleware,
+    setup_endpoint_logging,
+    setup_logging,
+)
 
-# Configure logging
-setup_logging()
+# Initialize logger
 logger = logging.getLogger(__name__)
+
+# Set up logging
+setup_logging()
+
+# Set up endpoint logging
+setup_endpoint_logging()
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    await init_db()  # type: ignore
-    scheduler.start()
+    logger.info("Starting application")
+    await init_db()
+    start_scheduler()
     yield
+    logger.info("Shutting down application")
 
 
-# Create FastAPI app
+# Create FastAPI app with custom route class
 app = FastAPI(
-    title="Vroom Backend",
-    description="Backend API",
+    title="Vroom",
     version="0.1.0",
+    route_class=EndpointLoggingRoute,  # Use custom route class for logging
     lifespan=lifespan,
 )
 
 # Add CORS middleware
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # TODO: Configure this properly for production
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# Add routers
-app.include_router(scrape.router, tags=["scraping"])
-app.include_router(analysis.router, tags=["analysis"])
-app.include_router(query.router, tags=["query"])
-app.include_router(analytics.router, tags=["analytics"])
-app.include_router(schedule.router, tags=["scheduling"])
+# Add request logging middleware
+app.add_middleware(RequestLoggingMiddleware)
+
+# Include routers
+app.include_router(analysis.router)
+app.include_router(analytics.router)
+app.include_router(query.router)
+app.include_router(schedule.router)
+app.include_router(scrape.router)

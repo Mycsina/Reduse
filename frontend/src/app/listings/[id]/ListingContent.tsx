@@ -148,19 +148,19 @@ export default function ListingContent({
 
       if (newListingsResponse.length > 0) {
         const newListings = newListingsResponse.map(
-          (response) => response.listing
+          (response: { listing: any; }) => response.listing
         );
         const newAnalyses = newListingsResponse
-          .map((response) => response.analysis)
-          .filter((analysis): analysis is AnalyzedListing => analysis !== null);
+          .map((response: { analysis: any; }) => response.analysis)
+          .filter((analysis: any): analysis is AnalyzedListing => analysis !== null);
 
         // Filter out any listings we already have
         const existingIds = new Set(similarListings.map((l) => l._id));
         const filteredNewListings = newListings.filter(
-          (l) => !existingIds.has(l._id)
+          (l: { _id: string; }) => !existingIds.has(l._id)
         );
         const filteredNewAnalyses = newAnalyses.filter(
-          (_, i) => !existingIds.has(newListings[i]._id)
+          (_: any, i: string | number) => !existingIds.has(newListings[i]._id)
         );
 
         return {

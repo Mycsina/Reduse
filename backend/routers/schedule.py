@@ -3,34 +3,21 @@
 import logging
 import uuid
 from datetime import datetime
-from typing import Optional, List
+from typing import Any, Dict, List, Optional
 
 from apscheduler.jobstores.base import JobLookupError
-from apscheduler.jobstores.mongodb import MongoDBJobStore
-from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
 from apscheduler.triggers.interval import IntervalTrigger
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field, HttpUrl
-from pymongo import MongoClient
+from sse_starlette.sse import EventSourceResponse
 
-from ..config import settings
 from ..logic import analysis, scraping
 from ..security import verify_api_key
+from ..tasks.scheduler import JobLogFilter, TaskConfig, registry, scheduler
 
 # Initialize logger
 logger = logging.getLogger(__name__)
-
-# Initialize MongoDB client
-client = MongoClient(settings.database.uri)
-
-# Initialize scheduler with MongoDB job store and configuration
-scheduler = AsyncIOScheduler(
-    jobstores={"default": MongoDBJobStore(client=client, database=settings.database.database_name)},
-    timezone=settings.scheduler.timezone,
-    job_defaults=settings.scheduler.job_defaults,
-    executors=settings.scheduler.executors,
-)
 
 router = APIRouter(prefix="/schedule", tags=["scheduling"])
 
@@ -38,13 +25,20 @@ router = APIRouter(prefix="/schedule", tags=["scheduling"])
 class ScheduleBase(BaseModel):
     """Base model for schedule configuration."""
 
-    job_id: Optional[str] = Field(default=None, description="Optional job ID. If not provided, one will be generated.")
-    cron: Optional[str] = None  # Cron expression (e.g. "0 0 * * *" for daily at midnight)
+    job_id: Optional[str] = Field(
+        default=None,
+        description="Optional job ID. If not provided, one will be generated.",
+    )
+    cron: Optional[str] = (
+        None  # Cron expression (e.g. "0 0 * * *" for daily at midnight)
+    )
     interval_seconds: Optional[int] = None  # Interval in seconds
     start_date: Optional[datetime] = None
     end_date: Optional[datetime] = None
     enabled: bool = True  # Whether the job should start enabled
-    max_instances: int = Field(default=1, ge=1, le=10)  # Maximum number of concurrent instances
+    max_instances: int = Field(
+        default=1, ge=1, le=10
+    )  # Maximum number of concurrent instances
 
 
 class ScrapeSchedule(ScheduleBase):
@@ -60,7 +54,9 @@ class OLXScrapeSchedule(ScheduleBase):
 
     analyze: bool = True  # Whether to analyze scraped listings
     generate_embeddings: bool = True  # Whether to generate embeddings
-    categories: Optional[List[str]] = None  # Optional list of specific categories to scrape, if None scrapes all
+    categories: Optional[List[str]] = (
+        None  # Optional list of specific categories to scrape, if None scrapes all
+    )
 
 
 class AnalysisSchedule(ScheduleBase):
@@ -111,21 +107,24 @@ async def schedule_scraping(config: ScrapeSchedule, _: str = Depends(verify_api_
                 except Exception as e:
                     logger.error(f"Error in scheduled scraping for {url}: {str(e)}")
 
-        # Create trigger based on configuration
-        trigger = _create_trigger(config)
-
-        # Add job to scheduler with configuration
-        scheduler.add_job(
-            scraping_pipeline,
-            trigger=trigger,
-            id=config.job_id,
-            replace_existing=True,
+        # Create task config
+        task_config = TaskConfig(
+            job_id=config.job_id,
+            cron=config.cron,
+            interval_seconds=config.interval_seconds,
             max_instances=config.max_instances,
+            enabled=config.enabled,
+        )
+
+        # Register and schedule the task
+        registry.register()(scraping_pipeline)
+        job_id = await scheduler.schedule_function(
+            scraping_pipeline.__name__, task_config
         )
 
         return {
-            "message": f"Scheduled scraping job {config.job_id}",
-            "job_id": config.job_id,
+            "message": f"Scheduled scraping job {job_id}",
+            "job_id": job_id,
             "config": config.dict(exclude={"job_id"}),
         }
     except Exception as e:
@@ -133,7 +132,9 @@ async def schedule_scraping(config: ScrapeSchedule, _: str = Depends(verify_api_
 
 
 @router.post("/scrape/olx")
-async def schedule_olx_scraping(config: OLXScrapeSchedule, _: str = Depends(verify_api_key)):
+async def schedule_olx_scraping(
+    config: OLXScrapeSchedule, _: str = Depends(verify_api_key)
+):
     """Schedule recurring OLX category scraping tasks."""
     try:
         # Generate job ID if not provided
@@ -159,21 +160,24 @@ async def schedule_olx_scraping(config: OLXScrapeSchedule, _: str = Depends(veri
             except Exception as e:
                 logger.error(f"Error in scheduled OLX scraping: {str(e)}")
 
-        # Create trigger based on configuration
-        trigger = _create_trigger(config)
-
-        # Add job to scheduler with configuration
-        scheduler.add_job(
-            olx_scraping_pipeline,
-            trigger=trigger,
-            id=config.job_id,
-            replace_existing=True,
+        # Create task config
+        task_config = TaskConfig(
+            job_id=config.job_id,
+            cron=config.cron,
+            interval_seconds=config.interval_seconds,
             max_instances=config.max_instances,
+            enabled=config.enabled,
+        )
+
+        # Register and schedule the task
+        registry.register()(olx_scraping_pipeline)
+        job_id = await scheduler.schedule_function(
+            olx_scraping_pipeline.__name__, task_config
         )
 
         return {
-            "message": f"Scheduled OLX scraping job {config.job_id}",
-            "job_id": config.job_id,
+            "message": f"Scheduled OLX scraping job {job_id}",
+            "job_id": job_id,
             "config": config.dict(exclude={"job_id"}),
         }
     except Exception as e:
@@ -204,21 +208,24 @@ async def schedule_analysis(config: AnalysisSchedule, _: str = Depends(verify_ap
             except Exception as e:
                 logger.error(f"Error in scheduled analysis: {str(e)}")
 
-        # Create trigger based on configuration
-        trigger = _create_trigger(config)
-
-        # Add job to scheduler with configuration
-        scheduler.add_job(
-            analysis_pipeline,
-            trigger=trigger,
-            id=config.job_id,
-            replace_existing=True,
+        # Create task config
+        task_config = TaskConfig(
+            job_id=config.job_id,
+            cron=config.cron,
+            interval_seconds=config.interval_seconds,
             max_instances=config.max_instances,
+            enabled=config.enabled,
+        )
+
+        # Register and schedule the task
+        registry.register()(analysis_pipeline)
+        job_id = await scheduler.schedule_function(
+            analysis_pipeline.__name__, task_config
         )
 
         return {
-            "message": f"Scheduled analysis job {config.job_id}",
-            "job_id": config.job_id,
+            "message": f"Scheduled analysis job {job_id}",
+            "job_id": job_id,
             "config": config.dict(exclude={"job_id"}),
         }
     except Exception as e:
@@ -226,7 +233,9 @@ async def schedule_analysis(config: AnalysisSchedule, _: str = Depends(verify_ap
 
 
 @router.post("/maintenance")
-async def schedule_maintenance(config: MaintenanceSchedule, _: str = Depends(verify_api_key)):
+async def schedule_maintenance(
+    config: MaintenanceSchedule, _: str = Depends(verify_api_key)
+):
     """Schedule recurring maintenance tasks."""
     try:
         # Generate job ID if not provided
@@ -251,21 +260,24 @@ async def schedule_maintenance(config: MaintenanceSchedule, _: str = Depends(ver
             except Exception as e:
                 logger.error(f"Error in scheduled maintenance: {str(e)}")
 
-        # Create trigger based on configuration
-        trigger = _create_trigger(config)
-
-        # Add job to scheduler with configuration
-        scheduler.add_job(
-            maintenance_pipeline,
-            trigger=trigger,
-            id=config.job_id,
-            replace_existing=True,
+        # Create task config
+        task_config = TaskConfig(
+            job_id=config.job_id,
+            cron=config.cron,
+            interval_seconds=config.interval_seconds,
             max_instances=config.max_instances,
+            enabled=config.enabled,
+        )
+
+        # Register and schedule the task
+        registry.register()(maintenance_pipeline)
+        job_id = await scheduler.schedule_function(
+            maintenance_pipeline.__name__, task_config
         )
 
         return {
-            "message": f"Scheduled maintenance job {config.job_id}",
-            "job_id": config.job_id,
+            "message": f"Scheduled maintenance job {job_id}",
+            "job_id": job_id,
             "config": config.dict(exclude={"job_id"}),
         }
     except Exception as e:
@@ -275,6 +287,7 @@ async def schedule_maintenance(config: MaintenanceSchedule, _: str = Depends(ver
 @router.get("/jobs")
 async def list_jobs(_: str = Depends(verify_api_key)):
     """List all scheduled jobs."""
+    await scheduler.init()
     jobs = scheduler.get_jobs()
     logger.info(f"Jobs: {jobs}")
     return [
@@ -293,6 +306,7 @@ async def list_jobs(_: str = Depends(verify_api_key)):
 async def pause_job(job_id: str, _: str = Depends(verify_api_key)):
     """Pause a scheduled job."""
     try:
+        await scheduler.init()
         scheduler.pause_job(job_id)
         return {"message": f"Paused job {job_id}"}
     except JobLookupError:
@@ -303,6 +317,7 @@ async def pause_job(job_id: str, _: str = Depends(verify_api_key)):
 async def resume_job(job_id: str, _: str = Depends(verify_api_key)):
     """Resume a paused job."""
     try:
+        await scheduler.init()
         scheduler.resume_job(job_id)
         return {"message": f"Resumed job {job_id}"}
     except JobLookupError:
@@ -313,6 +328,7 @@ async def resume_job(job_id: str, _: str = Depends(verify_api_key)):
 async def delete_job(job_id: str, _: str = Depends(verify_api_key)):
     """Delete a scheduled job."""
     try:
+        await scheduler.init()
         scheduler.remove_job(job_id)
         return {"message": f"Deleted job {job_id}"}
     except JobLookupError:
@@ -325,8 +341,151 @@ def _create_trigger(config: ScheduleBase):
         try:
             return CronTrigger.from_crontab(config.cron)
         except Exception as e:
-            raise HTTPException(status_code=400, detail=f"Invalid cron expression: {str(e)}")
+            raise HTTPException(
+                status_code=400, detail=f"Invalid cron expression: {str(e)}"
+            )
     elif config.interval_seconds:
-        return IntervalTrigger(seconds=config.interval_seconds, start_date=config.start_date, end_date=config.end_date)
+        return IntervalTrigger(
+            seconds=config.interval_seconds,
+            start_date=config.start_date,
+            end_date=config.end_date,
+        )
     else:
-        raise HTTPException(status_code=400, detail="Either cron or interval_seconds must be specified")
+        raise HTTPException(
+            status_code=400, detail="Either cron or interval_seconds must be specified"
+        )
+
+
+@router.get("/functions")
+async def list_available_functions(_: str = Depends(verify_api_key)):
+    """List all available functions that can be scheduled as tasks."""
+    # Discover functions in the main package
+    functions = registry.discover_functions(".")
+    return {
+        "functions": [
+            {
+                "path": path,
+                "name": info.function_name,
+                "module": info.module_name,
+                "doc": info.doc,
+                "is_async": info.is_async,
+                "parameters": info.parameters,
+                "return_type": info.return_type,
+            }
+            for path, info in functions.items()
+        ]
+    }
+
+
+@router.get("/functions/{function_path}")
+async def get_function_info(function_path: str, _: str = Depends(verify_api_key)):
+    """Get detailed information about a specific function."""
+    info = registry.get_function_info(function_path)
+    if not info:
+        raise HTTPException(
+            status_code=404, detail=f"Function {function_path} not found"
+        )
+    return {
+        "path": function_path,
+        "name": info.function_name,
+        "module": info.module_name,
+        "doc": info.doc,
+        "is_async": info.is_async,
+        "parameters": info.parameters,
+        "return_type": info.return_type,
+    }
+
+
+class CreateTaskRequest(BaseModel):
+    """Request model for creating a task from a function."""
+
+    function_path: str
+    config: TaskConfig
+
+
+@router.post("/functions/schedule")
+async def schedule_function(
+    request: CreateTaskRequest, _: str = Depends(verify_api_key)
+):
+    """Schedule a function as a task."""
+    try:
+        job_id = await scheduler.schedule_function(
+            request.function_path, request.config
+        )
+        return {
+            "message": f"Scheduled function {request.function_path} as task",
+            "job_id": job_id,
+            "config": request.config.dict(exclude={"job_id"}),
+        }
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+class RunFunctionRequest(BaseModel):
+    """Request model for running a function once."""
+
+    function_path: str
+    parameters: Optional[Dict[str, Any]] = None
+
+
+@router.post("/functions/run")
+async def run_function(request: RunFunctionRequest, _: str = Depends(verify_api_key)):
+    """Run a function once and return its job ID."""
+    try:
+        job_id = await registry.run_function_once(
+            request.function_path, request.parameters
+        )
+        return {
+            "message": f"Started function {request.function_path}",
+            "job_id": job_id,
+        }
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.get("/jobs/{job_id}/status")
+async def get_job_status(job_id: str, _: str = Depends(verify_api_key)):
+    """Get the status of a job."""
+    status = registry.get_job_status(job_id)
+    if not status:
+        raise HTTPException(status_code=404, detail=f"Job {job_id} not found")
+    return status
+
+
+@router.get("/jobs/{job_id}/logs")
+async def stream_job_logs(
+    job_id: str,
+    min_level: str = Query(
+        default="INFO",
+        description="Minimum log level to include (DEBUG, INFO, WARNING, ERROR, CRITICAL)",
+    ),
+    _: str = Depends(verify_api_key),
+):
+    """Stream logs for a specific job.
+
+    Args:
+        job_id: The ID of the job to get logs for
+        min_level: Minimum log level to include (DEBUG, INFO, WARNING, ERROR, CRITICAL)
+    """
+    if not registry.get_job_status(job_id):
+        raise HTTPException(status_code=404, detail=f"Job {job_id} not found")
+
+    # Validate log level
+    try:
+        log_filter = JobLogFilter(min_level=min_level.upper())
+    except ValueError:
+        raise HTTPException(status_code=400, detail=f"Invalid log level: {min_level}")
+
+    async def event_generator():
+        try:
+            async for log in registry.get_job_logs(job_id, log_filter):
+                yield {
+                    "data": log.json(),
+                    "event": "log",
+                    "id": str(log.timestamp.timestamp()),
+                }
+        except Exception as e:
+            logger.error(f"Error streaming logs for job {job_id}: {str(e)}")
+            yield {"data": {"error": str(e)}, "event": "error"}
+
+    return EventSourceResponse(event_generator())

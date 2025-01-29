@@ -1,15 +1,16 @@
 """Scraping endpoints."""
 
-import logging
 import asyncio
 import json
+import logging
 from typing import Any
-from fastapi import APIRouter, BackgroundTasks, Depends, Header, Query, HTTPException
-from pydantic import HttpUrl, BaseModel
+
+from fastapi import APIRouter, BackgroundTasks, Depends, Header, HTTPException, Query
+from pydantic import BaseModel, HttpUrl
 from sse_starlette.sse import EventSourceResponse
 
-from ..logic import scraping, analysis
-from ..security import verify_api_key, API_KEY
+from ..logic import analysis, scraping
+from ..security import API_KEY, verify_api_key
 
 router = APIRouter(prefix="/scrape")
 logger = logging.getLogger(__name__)
@@ -44,14 +45,18 @@ class LogHandler(logging.Handler):
 async def send_progress(queue_id: str, phase: str, current: int, total: int):
     """Send progress update."""
     if queue_id in queues:
-        await queues[queue_id].put({"type": "progress", "phase": phase, "current": current, "total": total})
+        await queues[queue_id].put(
+            {"type": "progress", "phase": phase, "current": current, "total": total}
+        )
 
 
 class ScrapeRequest(BaseModel):
     url: HttpUrl
 
 
-async def verify_api_key_sse(api_key: str = Query(None), x_api_key: str | None = Header(None, alias="X-API-Key")):
+async def verify_api_key_sse(
+    api_key: str = Query(None), x_api_key: str | None = Header(None, alias="X-API-Key")
+):
     """Verify API key from either query param or header for SSE endpoints."""
     if api_key == API_KEY or x_api_key == API_KEY:
         return True
@@ -59,7 +64,9 @@ async def verify_api_key_sse(api_key: str = Query(None), x_api_key: str | None =
 
 
 @router.get("/logs/{queue_id}")
-async def stream_logs(queue_id: str, _: bool = Depends(verify_api_key_sse)) -> EventSourceResponse:
+async def stream_logs(
+    queue_id: str, _: bool = Depends(verify_api_key_sse)
+) -> EventSourceResponse:
     """Stream logs for a specific scraping operation."""
     if queue_id not in queues:
         return EventSourceResponse([{"data": json.dumps({"type": "error", "message": "Queue not found"})}])  # type: ignore # noqa: E501
@@ -79,7 +86,9 @@ async def stream_logs(queue_id: str, _: bool = Depends(verify_api_key_sse)) -> E
 
 
 @router.post("/olx")
-async def parse_olx_categories(background_tasks: BackgroundTasks, _: str = Depends(verify_api_key)):
+async def parse_olx_categories(
+    background_tasks: BackgroundTasks, _: str = Depends(verify_api_key)
+):
     """Parse all OLX categories and save listings without details."""
     queue_id = str(id(background_tasks))
     handler = LogHandler(queue_id)
@@ -105,7 +114,11 @@ async def parse_olx_categories(background_tasks: BackgroundTasks, _: str = Depen
 
 
 @router.post("/")
-async def scrape(request: ScrapeRequest, background_tasks: BackgroundTasks, _: str = Depends(verify_api_key)):
+async def scrape(
+    request: ScrapeRequest,
+    background_tasks: BackgroundTasks,
+    _: str = Depends(verify_api_key),
+):
     """Scrape a URL and process the listings."""
     queue_id = str(id(background_tasks))
     handler = LogHandler(queue_id)

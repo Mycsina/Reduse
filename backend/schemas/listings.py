@@ -75,7 +75,10 @@ class ListingDocument(Document):
     class Settings:
         name = "listings"
         indexes = [
-            [("analysis_status", 1), ("price_value", 1)],  # For status/price correlation
+            [
+                ("analysis_status", 1),
+                ("price_value", 1),
+            ],  # For status/price correlation
             [("site", 1), ("timestamp", -1)],  # For marketplace trends
         ]
 
@@ -88,7 +91,9 @@ async def save_listings(listings: List[ListingDocument]) -> None:
     original_ids = [listing.original_id for listing in listings]
 
     # Get existing listings with the same original_ids
-    existing_listings = await ListingDocument.find_many({"original_id": {"$in": original_ids}}).to_list()
+    existing_listings = await ListingDocument.find_many(
+        {"original_id": {"$in": original_ids}}
+    ).to_list()
     existing_by_id = {listing.original_id: listing for listing in existing_listings}
 
     # Separate listings into updates and new inserts
@@ -100,7 +105,9 @@ async def save_listings(listings: List[ListingDocument]) -> None:
         if existing:
             # Compare all fields except metadata fields
             new_dict = listing.model_dump(exclude={"id", "created_at", "updated_at"})
-            existing_dict = existing.model_dump(exclude={"id", "created_at", "updated_at"})
+            existing_dict = existing.model_dump(
+                exclude={"id", "created_at", "updated_at"}
+            )
 
             if new_dict != existing_dict:
                 # Content is different, mark old for deletion and new for insertion
@@ -112,7 +119,9 @@ async def save_listings(listings: List[ListingDocument]) -> None:
 
     # Delete listings that have changed
     if to_delete_ids:
-        await ListingDocument.find_many({"original_id": {"$in": to_delete_ids}}).delete_many()
+        await ListingDocument.find_many(
+            {"original_id": {"$in": to_delete_ids}}
+        ).delete_many()
         logger.info(f"Deleted {len(to_delete_ids)} changed listings")
         [logger.debug(f"Deleted changed listing {id}") for id in to_delete_ids]
 

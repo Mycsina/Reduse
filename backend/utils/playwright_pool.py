@@ -1,7 +1,8 @@
-from playwright.async_api import async_playwright, Browser, BrowserContext, Playwright
 import asyncio
-from typing import Optional, Dict
 import logging
+from typing import Dict, Optional
+
+from playwright.async_api import Browser, BrowserContext, Playwright, async_playwright
 
 
 class PlaywrightPool:

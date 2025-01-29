@@ -1,9 +1,9 @@
 import logging
 
+from ..schemas.listings import ListingDocument, OriginalId, save_listings
 from ..services.olx import OLXScraper
 from ..services.scraper_base import ScraperNotFoundError, ScraperRegistry
 from .analysis import analyze_new_listings
-from ..schemas.listings import ListingDocument, OriginalId, save_listings
 
 scraper_registry = ScraperRegistry()
 
@@ -23,12 +23,16 @@ async def scrape_and_save(url: str, rate_limit: bool = True):
 
         await save_listings(listings)
 
-        logging.info(f"Finished scraping and saving for URL: {url}. Saved {len(listings)} new listings.")
+        logging.info(
+            f"Finished scraping and saving for URL: {url}. Saved {len(listings)} new listings."
+        )
 
     except ScraperNotFoundError as e:
         logging.error(f"No scraper found for URL: {url}. Error: {e}")
     except Exception as e:
-        logging.error(f"An error occurred during scraping or saving for URL: {url}. Error: {e}")
+        logging.error(
+            f"An error occurred during scraping or saving for URL: {url}. Error: {e}"
+        )
 
 
 async def scrape_analyze_and_save(url: str):
@@ -55,7 +59,9 @@ async def scrape_analyze_and_save(url: str):
 
         await save_listings(listings)
 
-        logging.info(f"Finished scraping and saving for URL: {url}. Saved {len(listings)} new listings.")
+        logging.info(
+            f"Finished scraping and saving for URL: {url}. Saved {len(listings)} new listings."
+        )
 
         # Analyze new listings
         await analyze_new_listings()
@@ -63,7 +69,9 @@ async def scrape_analyze_and_save(url: str):
     except ScraperNotFoundError as e:
         logging.error(f"No scraper found for URL: {url}. Error: {e}")
     except Exception as e:
-        logging.error(f"An error occurred during scraping or saving for URL: {url}. Error: {e}")
+        logging.error(
+            f"An error occurred during scraping or saving for URL: {url}. Error: {e}"
+        )
 
 
 async def scrape_olx_categories():
@@ -77,7 +85,9 @@ async def scrape_olx_categories():
             await save_listings(batch)
             total_saved += len(batch)
 
-        logging.info(f"Finished parsing and saving all categories. Total saved: {total_saved} listings")
+        logging.info(
+            f"Finished parsing and saving all categories. Total saved: {total_saved} listings"
+        )
 
     except Exception as e:
         logging.error(f"Error during OLX category parsing: {str(e)}")

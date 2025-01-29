@@ -1,5 +1,5 @@
 from decimal import Decimal
-from typing import Optional, Any
+from typing import Any, Optional
 
 from bson import Decimal128
 

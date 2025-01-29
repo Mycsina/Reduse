@@ -51,7 +51,9 @@ class EbayScraper(Scraper):
             if not self.client:
                 raise RuntimeError("Failed to create httpx client")
 
-    async def _api_request(self, endpoint: str, params: Dict[str, Any]) -> Dict[str, Any]:
+    async def _api_request(
+        self, endpoint: str, params: Dict[str, Any]
+    ) -> Dict[str, Any]:
         """Make an authenticated request to the eBay API."""
         await self._ensure_client()
         if not self.client:
@@ -65,7 +67,9 @@ class EbayScraper(Scraper):
             "X-EBAY-C-MARKETPLACE-ID": "EBAY_US",
         }
 
-        response = await self.client.get(f"{self.base_url}{endpoint}", params=params, headers=headers)
+        response = await self.client.get(
+            f"{self.base_url}{endpoint}", params=params, headers=headers
+        )
         if response.status_code != 200:
             raise Exception(f"API request failed: {response.text}")
         return response.json()
@@ -90,7 +94,9 @@ class EbayScraper(Scraper):
                 more=False,  # eBay API provides all needed info
             )
         except Exception as e:
-            self.logger.error(f"Error parsing item {item.get('itemId', 'unknown')}: {str(e)}")
+            self.logger.error(
+                f"Error parsing item {item.get('itemId', 'unknown')}: {str(e)}"
+            )
             raise
 
     def _extract_search_params(self, url: str) -> Dict[str, Any]:
@@ -110,7 +116,12 @@ class EbayScraper(Scraper):
             if path_parts:
                 search_query = path_parts[-1].replace("-", " ")
 
-        return {"q": search_query, "limit": 50, "filter": "conditions:{NEW}", "sort": "price"}
+        return {
+            "q": search_query,
+            "limit": 50,
+            "filter": "conditions:{NEW}",
+            "sort": "price",
+        }
 
     async def scrape(self, url: str, document: Document) -> None:
         """Scrape eBay listings using their API."""

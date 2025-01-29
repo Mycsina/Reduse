@@ -4,35 +4,28 @@ import logging
 import traceback
 from typing import Any, Dict, List, Optional
 
+from tqdm import tqdm
+
 from ..ai.base import AIModel
 from ..ai.providers.google import GoogleAIProvider
 from ..config import settings
-from ..prompts.product_analysis import get_model_instance
-from ..schemas.analyzed_listings import AnalyzedListingDocument
+from ..schemas.analysis import AnalyzedListingDocument
 from ..schemas.listings import AnalysisStatus, ListingDocument
-from ..services.analysis_service import AnalysisService
-from tqdm import tqdm
+from ..services.analysis import AnalysisService
 
 # Get logger but don't configure it (configuration is done in logging_config.py)
 logger = logging.getLogger(__name__)
 
-
-# Initialize AI provider and model
-provider = GoogleAIProvider(settings.ai.gemini_api_key.get_secret_value())
-model_config = get_model_instance()
-model = AIModel(
-    name=model_config.name,
-    provider=provider,
-    prompt_template=model_config.prompt_template,
-    temperature=model_config.temperature,
-    max_tokens=model_config.max_tokens,
-)
+# Initialize AI model with Google provider
+model = AIModel.from_provider(GoogleAIProvider)
 
 # Initialize service with the model
 analysis_service = AnalysisService(model)
 
 
-async def analyze_listing(listing: ListingDocument) -> Optional[AnalyzedListingDocument]:
+async def analyze_listing(
+    listing: ListingDocument,
+) -> Optional[AnalyzedListingDocument]:
     """Analyze a listing using the AI model."""
     try:
         result = []
@@ -79,7 +72,9 @@ async def retry_failed_analyses() -> None:
         logger.info(f"Analysis complete: {len(failed_listings)} listings processed")
 
     except Exception as e:
-        logger.error(f"Error retrying failed analyses: {str(e)}\n{traceback.format_exc()}")
+        logger.error(
+            f"Error retrying failed analyses: {str(e)}\n{traceback.format_exc()}"
+        )
 
 
 async def reanalyze_listings() -> None:
@@ -139,7 +134,9 @@ async def change_state(listings: List[ListingDocument], status: AnalysisStatus) 
     # Collect original ids
     original_ids = [listing.original_id for listing in listings]
     # Update listings
-    ListingDocument.find_many({"original_id": {"$in": original_ids}}).update({"$set": {"analysis_status": status}})
+    ListingDocument.find_many({"original_id": {"$in": original_ids}}).update(
+        {"$set": {"analysis_status": status}}
+    )
 
 
 async def analyze_and_save(listings: List[ListingDocument]) -> None:
@@ -148,7 +145,9 @@ async def analyze_and_save(listings: List[ListingDocument]) -> None:
     logger.debug(f"Analyzing {len(listings)} listings")
     originals = []
     analysis_results = []
-    async for original, analyzed in analysis_service.analyze_batch(listings, batch_size=10):
+    async for original, analyzed in analysis_service.analyze_batch(
+        listings, batch_size=10
+    ):
         originals.append(original)
         analysis_results.append(analyzed)
         if len(analysis_results) >= 10:  # Save in chunks to avoid memory buildup
@@ -183,7 +182,9 @@ async def cancel_in_progress() -> int:
         return len(in_progress)
 
     except Exception as e:
-        logger.error(f"Error cancelling in-progress analyses: {str(e)}\n{traceback.format_exc()}")
+        logger.error(
+            f"Error cancelling in-progress analyses: {str(e)}\n{traceback.format_exc()}"
+        )
         return 0
 
 
@@ -195,7 +196,9 @@ async def regenerate_embeddings() -> Dict[str, Any]:
         if not completed_analyses:
             return {"message": "No completed analyses found", "updated": 0}
 
-        logger.info(f"Found {len(completed_analyses)} completed analyses to regenerate embeddings for")
+        logger.info(
+            f"Found {len(completed_analyses)} completed analyses to regenerate embeddings for"
+        )
         updated = 0
 
         # Process in batches to avoid memory issues
@@ -204,18 +207,24 @@ async def regenerate_embeddings() -> Dict[str, Any]:
 
         # Create progress bars
         batch_progress = tqdm(total=total_batches, desc="Processing batches")
-        item_progress = tqdm(total=len(completed_analyses), desc="Regenerating embeddings")
+        item_progress = tqdm(
+            total=len(completed_analyses), desc="Regenerating embeddings"
+        )
 
         for i in range(0, len(completed_analyses), batch_size):
             batch = completed_analyses[i : i + batch_size]
-            logger.info(f"Processing batch {i // batch_size + 1} with {len(batch)} analyses")
+            logger.info(
+                f"Processing batch {i // batch_size + 1} with {len(batch)} analyses"
+            )
 
             for analysis_doc in batch:
                 try:
                     # Get the original listing to include its data in embedding
                     listing = await ListingDocument.get(analysis_doc.parsed_listing_id)
                     if not listing:
-                        logger.warning(f"Original listing not found for analysis {analysis_doc.id}")
+                        logger.warning(
+                            f"Original listing not found for analysis {analysis_doc.id}"
+                        )
                         item_progress.update(1)
                         continue
 
@@ -226,7 +235,9 @@ async def regenerate_embeddings() -> Dict[str, Any]:
                         "model": analysis_doc.model,
                         **analysis_doc.info,
                     }
-                    embeddings = await analysis_service._generate_embeddings(info, listing)
+                    embeddings = await analysis_service._generate_listing_embeddings(
+                        info, listing
+                    )
 
                     # Update the document with new embeddings
                     analysis_doc.embeddings = embeddings
@@ -235,7 +246,9 @@ async def regenerate_embeddings() -> Dict[str, Any]:
                     item_progress.update(1)
 
                 except Exception as e:
-                    logger.error(f"Error regenerating embeddings for analysis {analysis_doc.id}: {str(e)}")
+                    logger.error(
+                        f"Error regenerating embeddings for analysis {analysis_doc.id}: {str(e)}"
+                    )
                     item_progress.update(1)
                     continue
 
@@ -248,9 +261,14 @@ async def regenerate_embeddings() -> Dict[str, Any]:
             "message": f"Successfully regenerated embeddings for {updated} analyses",
             "total": len(completed_analyses),
             "updated": updated,
-            "dimensions": provider.get_dimensions(),
+            "dimensions": model.provider.get_dimensions(),
         }
 
     except Exception as e:
-        logger.error(f"Error during embeddings regeneration: {str(e)}\n{traceback.format_exc()}")
-        return {"message": f"Error during embeddings regeneration: {str(e)}", "updated": 0}
+        logger.error(
+            f"Error during embeddings regeneration: {str(e)}\n{traceback.format_exc()}"
+        )
+        return {
+            "message": f"Error during embeddings regeneration: {str(e)}",
+            "updated": 0,
+        }

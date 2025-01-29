@@ -1,25 +1,37 @@
 """Database initialization and configuration."""
 
 import logging
+
 from beanie import init_beanie
 from motor.motor_asyncio import AsyncIOMotorClient
 
 from .config import settings
 from .schemas.ai_cache import AICacheDocument
-from .schemas.analyzed_listings import AnalyzedListingDocument
+from .schemas.analysis import AnalyzedListingDocument
+from .schemas.analytics import FieldMapping, MappingLog, ModelPriceStats
 from .schemas.listings import ListingDocument
-from .schemas.analytics import ModelPriceStats
+
 logger = logging.getLogger(__name__)
 
 # List of document models to register with Beanie
-MODELS = [ListingDocument, AnalyzedListingDocument, AICacheDocument, ModelPriceStats]
+MODELS = [
+    ListingDocument,
+    AnalyzedListingDocument,
+    AICacheDocument,
+    ModelPriceStats,
+    FieldMapping,
+    MappingLog,
+]
 
 
 async def init_db():
     """Initialize the database connection and Beanie ODM."""
     logger.info("Initializing database")
     client = AsyncIOMotorClient(settings.database.uri)
-    await init_beanie(database=client.get_database(settings.database.database_name), document_models=MODELS)
+    await init_beanie(
+        database=client.get_database(settings.database.database_name),
+        document_models=MODELS,
+    )
     logger.info("Database initialized")
 
 
