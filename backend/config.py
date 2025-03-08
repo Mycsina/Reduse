@@ -1,7 +1,7 @@
 """Application-wide configuration settings."""
 
 from pathlib import Path
-from typing import Any, Dict
+from typing import Any, Dict, Optional
 
 from dotenv import load_dotenv
 from pydantic import Field, SecretStr
@@ -28,13 +28,22 @@ class APISettings(BaseSettings):
 class DatabaseSettings(BaseSettings):
     """Database-related settings."""
 
+    mongodb_uri: Optional[str] = Field(default=None, env="MONGODB_URI")  # type: ignore
     atlas_user: str = Field(..., env="ATLAS_USER")  # type: ignore
     atlas_password: SecretStr = Field(..., env="ATLAS_PASSWORD")  # type: ignore
     database_name: str = Field(default="Vroom")
+    max_pool_size: int = Field(default=10)
+    min_pool_size: int = Field(default=1)
+    max_idle_time_ms: int = Field(default=30000)
 
     @property
     def uri(self) -> str:
         """Get the MongoDB connection URI."""
+        # Use explicit MONGODB_URI if provided
+        if self.mongodb_uri:
+            return self.mongodb_uri
+
+        # Otherwise construct from components
         return (
             f"mongodb+srv://{self.atlas_user}:{self.atlas_password.get_secret_value()}"
             f"@vroom.k7x4g.mongodb.net/?retryWrites=true&w=majority&appName=vroom"
@@ -50,6 +59,7 @@ class AISettings(BaseSettings):
     openai_api_key: SecretStr = Field(default="", env="OPENAI_API_KEY")  # type: ignore
     groq_api_key: SecretStr = Field(default="", env="GROQ_API_KEY")  # type: ignore
     default_model: str = Field(default="gemini-2.0-flash-exp")
+    default_provider: str = Field(default="composite")  # Default to the composite provider
     rate_limits: Dict[str, int] = Field(
         default={
             "requests_per_minute": 60,
@@ -155,6 +165,17 @@ class EbaySettings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", extra="allow")
 
 
+class CacheSettings(BaseSettings):
+    """Cache-related settings."""
+
+    redis_url: str = Field(default="redis://localhost:6379/0", env="REDIS_URL")  # type: ignore
+    default_ttl: int = Field(default=3600)  # 1 hour default TTL
+    embedding_ttl: int = Field(default=86400 * 7)  # 1 week for embeddings
+    enable_pickle: bool = Field(default=True)  # Allow pickle for complex objects
+
+    model_config = SettingsConfigDict(env_file=".env", extra="allow")
+
+
 class Settings(BaseSettings):
     """Global settings container."""
 
@@ -165,6 +186,7 @@ class Settings(BaseSettings):
     logging: LoggingSettings = Field(default_factory=LoggingSettings)
     scheduler: SchedulerSettings = Field(default_factory=SchedulerSettings)
     ebay: EbaySettings = Field(default_factory=EbaySettings)  # type: ignore
+    cache: CacheSettings = Field(default_factory=CacheSettings)
 
     model_config = SettingsConfigDict(env_file=".env", extra="allow")
 

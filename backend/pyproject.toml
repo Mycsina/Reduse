@@ -26,6 +26,7 @@ apscheduler = "*"
 certifi = "*"
 sse-starlette = "^2.2.1"
 scikit-learn = "^1.6.1"
+llama-index = "^0.12.22"
 
 [tool.poetry.group.dev.dependencies]
 black = "^25.1.0"

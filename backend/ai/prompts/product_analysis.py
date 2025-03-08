@@ -2,87 +2,121 @@
 
 """Product analysis prompt configuration."""
 
-from typing import Any, Dict
+from typing import Any, Dict, List, Optional
+
+from langchain_core.output_parsers import JsonOutputParser
+from langchain_core.pydantic_v1 import BaseModel, Field
 
 from ...config import settings
 from .base import BasePromptConfig, BasePromptTemplate
+
+
+class ProductInfo(BaseModel):
+    """Schema for product information."""
+
+    type: str = Field(description="The type of product being offered")
+    brand: str = Field(description="The name of the company or manufacturer")
+    base_model: str = Field(description="The core product name/number before variants")
+    model_variant: Optional[str] = Field(default=None, description="Specific version/edition of the base model")
+    info: Dict[str, Any] = Field(default_factory=dict, description="Additional product details")
 
 
 class ProductAnalysisConfig(BasePromptConfig):
     """Configuration for product analysis prompts."""
 
     def __init__(self):
+        """Initialize product analysis configuration."""
         super().__init__(
             model_name=settings.ai.default_model,
             temperature=0.1,  # Low temperature for consistent, factual responses
             max_tokens=8192,
-            system_prompt="You are an expert at analyzing product listings and extracting the relevant information.",
+            system_prompt=(
+                "You are an expert at analyzing product listings and extracting relevant information. "
+                "You have deep knowledge of various product categories and can identify key details "
+                "that matter to potential buyers."
+            ),
         )
 
 
 class ProductAnalysisTemplate(BasePromptTemplate):
-    """Template for product analysis prompts."""
+    """Template for product analysis prompts with structured output parsing."""
 
     def __init__(self):
+        """Initialize product analysis template."""
+        self.output_parser = JsonOutputParser(pydantic_object=ProductInfo)
+        
         template = """
-You can use your deep product knowledge to determine what fields are relevant to extract.
-Analyze the following product listing to identify and extract the **Type, Brand, Base Model, and Model Variant** of the product being offered, as well as any other **additional information** that might be relevant to someone choosing this specific listing.
+Analyze the following product listing to identify and extract key information.
 
-**Definitions:**
+Guidelines:
+1. Extract the core product details:
+   - Type: What kind of product is this?
+   - Brand: Who manufactured it?
+   - Base Model: What's the main model name/number?
+   - Model Variant: Any specific version/edition?
 
-* **Type:** The type of product being offered.
-* **Brand:** The name of the company or manufacturer of the product.
-* **Base Model:** The core product name/number before variants (e.g., "RTX 3070")
-* **Model Variant:** Specific version/edition of the base model (e.g., "OC", "Founders Edition")
-* **Additional Information:** Other details useful for a potential buyer.
+2. Additional Information:
+   - Extract any details that would help someone evaluate this product
+   - Include specifications, condition, features, etc.
+   - Organize related information into logical groups
 
-**Instructions:**
+3. Data Quality:
+   - Use "null" for fields that can't be determined
+   - Be precise with technical specifications
+   - Maintain original terminology where appropriate
+   - Split comma-separated values into lists
 
-1. Carefully read the product listing.
-2. Use your deep product knowledge to determine what information is relevant to extract.
-3. Identify the **Type**, **Brand**, **Base Model**, and **Model Variant**.
-4. Extract any **Additional Information**.
-5. When in doubt, use "null" for fields that can't be determined.
-6. Return the extracted information in a JSON object.
-7. If there is more than one listing, return a list of JSON objects.
+Example Input:
+Title: Used Apple MacBook Pro 16-inch with M1 Pro chip, 16GB RAM, 512GB SSD
+Description: Excellent condition, barely used. Space Gray color. Comes with original charger.
 
-**Examples:**
-
-**Input Listing:** Used Apple MacBook Pro 16-inch with M1 Pro chip, 16GB RAM, 512GB SSD, excellent condition.
-**Output JSON:**
+Example Output:
 {
   "type": "laptop",
   "brand": "Apple",
   "base_model": "MacBook Pro",
-  "model_variant": "null",
+  "model_variant": "M1 Pro",
   "info": {
-    "cpu": "M1 Pro",
+    "screen_size": "16-inch",
     "ram": "16GB",
     "storage": "512GB SSD",
-    "screen_size": "16-inch",
-    "condition": "excellent"
+    "color": "Space Gray",
+    "condition": "excellent",
+    "accessories": ["original charger"]
   }
 }
 
-**Input Listing:** ASUS RTX 3070 OC 8GB GDDR6X, 100% brand new, never used, in original packaging.
-**Output JSON:**
-{
-  "type": "gpu",
-  "brand": "ASUS",
-  "base_model": "RTX 3070",
-  "model_variant": "OC",
-  "info": {
-    "condition": "100% brand new, never used, in original packaging",
-    "memory": "8GB",
-    "memory_type": "GDDR6X"
-  }
-}
+Now analyze this listing:
+{input}
 
-**Input Listing:** {input}
-**Return the JSON object:**"""
+JSON Output:"""
+
         super().__init__(template=template, config=ProductAnalysisConfig())
 
+    async def parse_output(self, output: str) -> ProductInfo:
+        """Parse the model output into a structured format.
+        
+        Args:
+            output: Raw model output string
+            
+        Returns:
+            ProductInfo: Parsed product information
+        """
+        return self.output_parser.parse(output)
 
-def create_product_analysis_prompt() -> BasePromptTemplate:
-    """Create a product analysis prompt."""
+    def to_langchain(self):
+        """Get the LangChain-compatible prompt chain.
+        
+        Returns:
+            Chain: LangChain prompt chain with output parsing
+        """
+        return super().to_langchain() | self.output_parser
+
+
+def create_product_analysis_prompt() -> ProductAnalysisTemplate:
+    """Create a product analysis prompt.
+    
+    Returns:
+        ProductAnalysisTemplate: Configured prompt template
+    """
     return ProductAnalysisTemplate()

@@ -1,0 +1,151 @@
+# Vroom Project Architecture Rules
+
+## Directory Structure
+
+### Backend (/backend)
+
+- `ai/`: AI-related components and providers
+  - `providers/`: AI service integrations (Google AI, Groq)
+  - `prompts/`: Prompt templates and configurations
+- `models/`: MongoDB document models using Beanie ODM
+- `routers/`: FastAPI route handlers
+- `schemas/`: Pydantic models for request/response validation
+- `services/`: Business logic and external service integrations
+- `tasks/`: Background tasks and scheduled jobs
+- `utils/`: Utility functions and helpers
+- `config.py`: Application configuration
+- `db.py`: Database connection and utilities
+- `security.py`: Authentication and authorization
+- `start.py`: Application entry point
+
+### Frontend (/frontend)
+
+- `src/`
+  - `app/`: Next.js pages and layouts
+  - `components/`: Reusable React components
+  - `hooks/`: Custom React hooks
+  - `lib/`: Utility functions and constants
+  - `providers/`: React context providers
+  - `styles/`: Global styles and themes
+
+## Architectural Rules
+
+### Backend Rules
+
+1. All database operations must go through models defined in `models/`
+2. API endpoints must use Pydantic models from `schemas/` for validation
+3. Business logic should be in `services/`, not in route handlers
+4. AI operations must use providers from `ai/providers/`
+5. Background tasks must be defined in `tasks/`
+6. Configuration must be centralized in `config.py`
+7. Authentication logic must be in `security.py`
+8. MongoDB connection must be configured through `config.py` settings
+
+### Frontend Rules
+
+1. Use Next.js App Router for routing
+2. Components must be organized by feature in `components/`
+3. Global state must use React Context via `providers/`
+4. API calls must use React Query
+5. Styles must use Tailwind CSS
+6. Forms must use accessible Radix UI components
+7. Environment variables must be typed and validated
+
+### Cross-cutting Rules
+
+1. All code must be typed (Python type hints, TypeScript)
+2. All functions must have docstrings/JSDoc comments
+3. All API endpoints must be documented with OpenAPI
+4. All components must be accessible (WCAG 2.1)
+5. All errors must be properly handled and logged
+6. All sensitive data must be properly secured
+7. All external service calls must be retryable and timeout-protected
+
+## Security Rules
+
+1. All user input must be validated
+2. All API endpoints must be authenticated unless public
+3. All sensitive data must be encrypted
+4. All external API keys must be secured
+5. All file uploads must be validated and sanitized
+6. All database queries must be protected against injection
+7. All frontend assets must be properly CSP configured
+8. All MongoDB queries must use Beanie's type-safe query builder
+
+## Performance Rules
+
+1. All database queries must be optimized
+2. All API responses must be cached when possible
+3. All images must be optimized
+4. All frontend bundles must be code-split
+5. All API endpoints must be paginated
+6. All long-running tasks must be async
+7. All heavy computations must be background tasks
+
+## Epic-Specific Rules
+
+### AI and Analysis Rules
+
+1. All AI providers must implement the BaseProvider interface
+2. AI operations must be retryable and handle rate limits
+3. Prompts must be versioned and use structured templates
+4. Analysis results must be validated against schemas
+5. Embeddings must be cached when possible
+
+### Data Collection Rules
+
+1. All scrapers must handle rate limiting and blocking
+2. External API calls must use retry mechanisms
+3. Data collection must be resumable from failures
+4. All collected data must be validated before storage
+5. Scraping schedules must be configurable
+
+### Task Management Rules
+
+1. Tasks must be idempotent
+2. Task status must be trackable
+3. Failed tasks must be automatically retried
+4. Long-running tasks must be cancellable
+5. Task results must be persistently stored
+
+### Analytics Rules
+
+1. All analytics must be aggregated asynchronously
+2. Performance metrics must be collected automatically
+3. Query patterns must be analyzed and optimized
+4. Custom metrics must be properly documented
+5. Analytics data must be regularly archived
+
+### User Management Rules
+
+1. Subscription changes must be atomic
+2. Usage limits must be enforced consistently
+3. Payment processing must be idempotent
+4. User preferences must be cached
+5. Access control must be role-based
+
+### Frontend Feature Rules
+
+1. Real-time updates must use WebSocket/SSE
+2. Search must be optimized for performance
+3. Comparison tools must handle large datasets
+4. Task UI must show real-time status
+5. Visualizations must be responsive
+
+## LLM Rules
+
+1. Add structural changes to .cursorrules to improve the LLM's ability to follow the rules.
+2. Follow epic-specific rules when modifying related components.
+3. Maintain consistency with implemented features.
+4. Respect the established patterns in each epic.
+5. Document any deviations from epic rules.
+
+## Database Rules
+
+1. Use MongoDB Atlas for production deployments
+2. Local development must use a dedicated Atlas cluster
+3. All collections must have defined indexes in models
+4. Database migrations must be handled through Beanie
+5. Connection pooling must be configured in `db.py`
+6. All document models must inherit from `beanie.Document`
+7. Database transactions must be used for critical operations
