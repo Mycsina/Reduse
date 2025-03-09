@@ -1,4 +1,4 @@
-# Vroom
+# Reduse
 
 A modern web application for intelligent product analysis and tracking, built with FastAPI and Next.js.
 
@@ -16,38 +16,38 @@ A modern web application for intelligent product analysis and tracking, built wi
 
 ### AI and Analysis
 
-- ✅ Multi-provider AI integration (Google AI, Groq)
-- ✅ Product listing analysis with structured output
-- ✅ Intelligent text generation and processing
-- ✅ Semantic embedding and similarity search
+- [x] Multi-provider AI integration (Google AI, Groq)
+- [x] Product listing analysis with structured output
+- [x] Intelligent text generation and processing
+- [x] Semantic embedding and similarity search
 
 ### Data Collection
 
-- ✅ Automated web scraping with Playwright
-- ✅ eBay API integration
-- ✅ Scheduled data collection tasks
-- ✅ Rate limiting and retry mechanisms
+- [x] Automated web scraping with Playwright
+- [ ] eBay API integration
+- [x] Scheduled data collection tasks
+- [x] Rate limiting and retry mechanisms
 
 ### Task Management
 
-- ✅ Background task scheduling
-- ✅ Task status monitoring
-- ✅ Failure recovery and retry logic
-- ✅ Task analytics and reporting
+- [x] Background task scheduling
+- [x] Task status monitoring
+- [x] Failure recovery and retry logic
+- [x] Task analytics and reporting
 
 ### Analytics
 
-- ✅ Usage tracking and monitoring
-- ✅ Performance analytics
-- ✅ Query analysis and optimization
-- ✅ Custom analytics dashboards
+- [ ] Usage tracking and monitoring
+- [ ] Performance analytics
+- [ ] Query analysis and optimization
+- [ ] Custom analytics dashboards
 
 ### User Management
 
-- ✅ Subscription management
-- ✅ Usage quotas and limits
-- ✅ Payment processing
-- ✅ User preferences
+- [ ] Subscription management
+- [ ] Usage quotas and limits
+- [ ] Payment processing
+- [ ] User preferences
 
 ### Frontend Features
 
@@ -156,15 +156,3 @@ npm run dev
 
 - Backend API documentation: http://localhost:8000/docs
 - Frontend component documentation: http://localhost:3000/docs (coming soon)
-
-## 🤝 Contributing
-
-1. Fork the repository
-2. Create your feature branch (`git checkout -b feature/amazing-feature`)
-3. Commit your changes (`git commit -m 'Add some amazing feature'`)
-4. Push to the branch (`git push origin feature/amazing-feature`)
-5. Open a Pull Request
-
-## 📝 License
-
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
