@@ -1,8 +1,7 @@
 """Base prompt configuration and templates."""
 
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional, Tuple, Union
 
-from langchain_core.prompts import ChatPromptTemplate
 from pydantic import BaseModel, Field
 
 
@@ -23,8 +22,13 @@ class BasePromptConfig(BaseModel):
         }
 
 
+# Define message types for clarity
+Message = Tuple[str, str]  # (role, content)
+MessageList = List[Message]
+
+
 class BasePromptTemplate:
-    """Base template for prompts with LangChain integration."""
+    """Base template for prompts."""
 
     def __init__(self, template: str, config: BasePromptConfig):
         """Initialize the prompt template.
@@ -35,9 +39,6 @@ class BasePromptTemplate:
         """
         self.template = template
         self.config = config
-        self._langchain_template = ChatPromptTemplate.from_messages(
-            [("system", config.system_prompt), ("human", template)]
-        )
 
     def format(self, **kwargs: Any) -> str:
         """Format the prompt template with variables.
@@ -50,13 +51,17 @@ class BasePromptTemplate:
         """
         return self.template.format(**kwargs)
 
-    def to_langchain(self) -> ChatPromptTemplate:
-        """Get the LangChain prompt template.
+    def to_messages(self, **kwargs: Any) -> MessageList:
+        """Convert the template to a list of messages.
+
+        Args:
+            **kwargs: Variables to format the template with
 
         Returns:
-            ChatPromptTemplate: The LangChain prompt template
+            MessageList: List of (role, content) tuples
         """
-        return self._langchain_template
+        formatted_user_message = self.format(**kwargs)
+        return [("system", self.config.system_prompt), ("user", formatted_user_message)]
 
     def get_config(self) -> Dict[str, Any]:
         """Get the prompt configuration.

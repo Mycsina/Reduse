@@ -17,7 +17,10 @@ class RateLimiter:
     """Rate limiting implementation using Redis."""
 
     def __init__(
-        self, requests_per_minute: int = 60, burst_requests: Optional[int] = None, key_prefix: str = "ratelimit"
+        self,
+        requests_per_minute: int = 60,
+        burst_requests: Optional[int] = None,
+        key_prefix: str = "ratelimit",
     ):
         """Initialize the rate limiter.
 
@@ -31,7 +34,9 @@ class RateLimiter:
         self.key_prefix = key_prefix
         self.logger = logging.getLogger(__name__)
 
-    async def is_rate_limited(self, key: str) -> Tuple[bool, Dict[str, Union[int, float]]]:
+    async def is_rate_limited(
+        self, key: str
+    ) -> Tuple[bool, Dict[str, Union[int, float]]]:
         """Check if a key is rate limited.
 
         Args:
@@ -59,7 +64,9 @@ class RateLimiter:
 
         # Calculate the rate
         current_rate = current_count
-        weighted_rate = current_count + (previous_count * 0.5)  # Half weight for previous minute
+        weighted_rate = current_count + (
+            previous_count * 0.5
+        )  # Half weight for previous minute
 
         # Check if rate limited
         is_limited = weighted_rate > self.burst_requests
@@ -72,7 +79,9 @@ class RateLimiter:
             "burst_limit": self.burst_requests,
             "remaining": max(0, self.burst_requests - weighted_rate),
             "reset_at": (current_minute + 1) * 60,
-            "retry_after": (current_minute + 1) * 60 - int(time.time()) if is_limited else 0,
+            "retry_after": (
+                (current_minute + 1) * 60 - int(time.time()) if is_limited else 0
+            ),
         }
 
         return is_limited, rate_info
@@ -99,7 +108,9 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
             api_key_header: Header name for API key
         """
         super().__init__(app)
-        self.rate_limiter = RateLimiter(requests_per_minute=requests_per_minute, burst_requests=burst_requests)
+        self.rate_limiter = RateLimiter(
+            requests_per_minute=requests_per_minute, burst_requests=burst_requests
+        )
         self.exclude_paths = exclude_paths or ["/health", "/docs", "/openapi.json"]
         self.api_key_header = api_key_header
         self.logger = logging.getLogger(__name__)
@@ -128,13 +139,18 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
 
         # Set rate limit headers
         response = await call_next(request)
-        response.headers["X-RateLimit-Limit"] = str(self.rate_limiter.requests_per_minute)
+        response.headers["X-RateLimit-Limit"] = str(
+            self.rate_limiter.requests_per_minute
+        )
         response.headers["X-RateLimit-Remaining"] = str(int(rate_info["remaining"]))
         response.headers["X-RateLimit-Reset"] = str(int(rate_info["reset_at"]))
 
         # If rate limited, return 429 response
         if is_limited:
-            self.logger.warning(f"Rate limit exceeded for {key}", extra={"key": key, "rate_info": rate_info})
+            self.logger.warning(
+                f"Rate limit exceeded for {key}",
+                extra={"key": key, "rate_info": rate_info},
+            )
             response.headers["Retry-After"] = str(int(rate_info["retry_after"]))
             error = RateLimitError("Rate limit exceeded", str(key))
             response.status_code = 429

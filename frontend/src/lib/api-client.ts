@@ -1,32 +1,23 @@
-import { ListingQuery } from '@/lib/types';
+import {
+  AnalyzedListingDocument,
+  AnalysisStatus,
+  TaskConfig,
+  ModelPriceStats as ApiModelPriceStats,
+  RunFunctionRequest,
+  CreateTaskRequest,
+  SimpleJobResponse,
+  ScheduleResponse,
+  JobListResponse,
+  JobStatusResponse,
+  FunctionListResponse,
+  FunctionInfoResponse,
+  QueuedTaskResponse,
+  UpdateStatsResponse,
+  ListingQuery
+} from "../types/api";
 
-interface ScheduleConfig {
-  job_id?: string;
-  cron?: string;
-  interval_seconds?: number;
-  enabled?: boolean;
-  max_instances?: number;
-}
-
-// Add missing types
-interface AnalysisStatusType {
-  pending: number;
-  in_progress: number;
-  failed: number;
-  completed: number;
-  can_process: boolean;
-}
-
-// Add ModelPriceStats interface to match backend schema
-interface ModelPriceStats {
-  model: string;
-  avg_price: number;
-  min_price: number;
-  max_price: number;
-  median_price: number;
-  sample_size: number;
-  timestamp: string;
-}
+// Type alias for backward compatibility
+type AnalyzedListing = AnalyzedListingDocument;
 
 class APIClient {
   private apiKey: string;
@@ -75,7 +66,7 @@ class APIClient {
   // Base fetch method
   private async fetch(endpoint: string, options: RequestInit = {}) {
     const cacheKey = this.getCacheKey(endpoint, options);
-    
+
     if (options.method === undefined || options.method === 'GET') {
       const cached = this.getCache(cacheKey);
       if (cached) return cached;
@@ -95,7 +86,7 @@ class APIClient {
     }
 
     const data = await response.json();
-    
+
     if (options.method === undefined || options.method === 'GET') {
       this.setCache(cacheKey, data);
     }
@@ -104,7 +95,7 @@ class APIClient {
   }
 
   // Analytics endpoints
-  async getCurrentModelStats(baseModel: string): Promise<ModelPriceStats | null> {
+  async getCurrentModelStats(baseModel: string): Promise<ApiModelPriceStats | null> {
     if (!baseModel) return null;
     return this.fetch(`${this.endpoints.analytics}/current/${baseModel}`);
   }
@@ -113,7 +104,7 @@ class APIClient {
     baseModel: string,
     days: number = 30,
     limit?: number
-  ): Promise<ModelPriceStats[]> {
+  ): Promise<ApiModelPriceStats[]> {
     if (!baseModel) return [];
     const params = new URLSearchParams();
     if (days) params.append('days', days.toString());
@@ -121,7 +112,7 @@ class APIClient {
     return this.fetch(`${this.endpoints.analytics}/history/${baseModel}?${params}`);
   }
 
-  async updatePriceStats(): Promise<{ message: string }> {
+  async updatePriceStats(): Promise<UpdateStatsResponse> {
     return this.fetch(`${this.endpoints.analytics}/update-stats`, { method: 'POST' });
   }
 
@@ -138,27 +129,27 @@ class APIClient {
   }
 
   // Analysis endpoints
-  async getAnalysisStatus() {
-    return this.fetch(`${this.endpoints.analysis}/status`) as Promise<AnalysisStatusType>;
+  async getAnalysisStatus(): Promise<AnalysisStatus> {
+    return this.fetch(`${this.endpoints.analysis}/status`);
   }
 
-  async startAnalysis() {
+  async startAnalysis(): Promise<SimpleJobResponse> {
     return this.fetch(`${this.endpoints.analysis}/start`, { method: 'POST' });
   }
 
-  async retryFailedAnalyses() {
+  async retryFailedAnalyses(): Promise<SimpleJobResponse> {
     return this.fetch(`${this.endpoints.analysis}/retry-failed`, { method: 'POST' });
   }
 
-  async resumeAnalysis() {
+  async resumeAnalysis(): Promise<SimpleJobResponse> {
     return this.fetch(`${this.endpoints.analysis}/resume`, { method: 'POST' });
   }
 
-  async cancelAnalysis() {
+  async cancelAnalysis(): Promise<SimpleJobResponse> {
     return this.fetch(`${this.endpoints.analysis}/cancel`, { method: 'POST' });
   }
 
-  async regenerateEmbeddings() {
+  async regenerateEmbeddings(): Promise<SimpleJobResponse> {
     return this.fetch(`${this.endpoints.analysis}/regenerate-embeddings`, { method: 'POST' });
   }
 
@@ -175,14 +166,14 @@ class APIClient {
   }
 
   // Scraping endpoints
-  async scrapeUrl(url: string) {
+  async scrapeUrl(url: string): Promise<QueuedTaskResponse> {
     return this.fetch(`${this.endpoints.scrape}`, {
       method: 'POST',
       body: JSON.stringify({ url }),
     });
   }
 
-  async scrapeOlxCategories() {
+  async scrapeOlxCategories(): Promise<QueuedTaskResponse> {
     return this.fetch(`${this.endpoints.scrape}/olx`, { method: 'POST' });
   }
 
@@ -192,39 +183,39 @@ class APIClient {
   }
 
   // Scheduling endpoints
-  async getScheduledJobs() {
+  async getScheduledJobs(): Promise<JobListResponse> {
     return this.fetch(`${this.endpoints.schedule}/jobs`);
   }
 
-  async getAvailableFunctions() {
+  async getAvailableFunctions(): Promise<FunctionListResponse> {
     return this.fetch(`${this.endpoints.schedule}/functions`);
   }
 
-  async getFunctionInfo(functionPath: string) {
+  async getFunctionInfo(functionPath: string): Promise<FunctionInfoResponse> {
     return this.fetch(`${this.endpoints.schedule}/functions/${functionPath}`);
   }
 
-  async scheduleFunction(functionPath: string, config: ScheduleConfig) {
+  async scheduleFunction(functionPath: string, config: TaskConfig): Promise<ScheduleResponse> {
     return this.fetch(`${this.endpoints.schedule}/functions/schedule`, {
       method: 'POST',
       body: JSON.stringify({
         function_path: functionPath,
         config,
-      }),
+      } as CreateTaskRequest),
     });
   }
 
-  async runFunction(functionPath: string, config: { parameters?: Record<string, any> }) {
+  async runFunction(functionPath: string, config: { parameters?: Record<string, any> }): Promise<QueuedTaskResponse> {
     return this.fetch(`${this.endpoints.schedule}/functions/run`, {
       method: 'POST',
       body: JSON.stringify({
         function_path: functionPath,
         parameters: config.parameters,
-      }),
+      } as RunFunctionRequest),
     });
   }
 
-  async getJobStatus(jobId: string) {
+  async getJobStatus(jobId: string): Promise<JobStatusResponse> {
     return this.fetch(`${this.endpoints.schedule}/jobs/${jobId}/status`);
   }
 
@@ -240,15 +231,15 @@ class APIClient {
   }
 
   // Job management
-  async pauseScheduledJob(jobId: string) {
+  async pauseScheduledJob(jobId: string): Promise<SimpleJobResponse> {
     return this.fetch(`${this.endpoints.schedule}/jobs/${jobId}/pause`, { method: 'PUT' });
   }
 
-  async resumeScheduledJob(jobId: string) {
+  async resumeScheduledJob(jobId: string): Promise<SimpleJobResponse> {
     return this.fetch(`${this.endpoints.schedule}/jobs/${jobId}/resume`, { method: 'PUT' });
   }
 
-  async deleteScheduledJob(jobId: string) {
+  async deleteScheduledJob(jobId: string): Promise<SimpleJobResponse> {
     return this.fetch(`${this.endpoints.schedule}/jobs/${jobId}`, { method: 'DELETE' });
   }
 
@@ -345,7 +336,7 @@ class APIClient {
 
         while (true) {
           const { done, value } = await reader.read();
-          
+
           if (done) {
             if (onComplete) onComplete();
             break;
@@ -354,7 +345,7 @@ class APIClient {
           buffer += decoder.decode(value, { stream: true });
           const lines = buffer.split('\n');
           buffer = lines.pop() || '';
-          
+
           for (const line of lines) {
             if (line.startsWith('data: ')) {
               try {
@@ -370,7 +361,7 @@ class APIClient {
         if (error instanceof Error && error.name === 'AbortError') {
           return;
         }
-        
+
         if (retryCount < MAX_RETRIES) {
           retryCount++;
           setTimeout(connect, RETRY_DELAY);
@@ -386,7 +377,23 @@ class APIClient {
       abortController = new AbortController();
     };
   }
+
+  async getListingAnalysisByOriginalId(originalId: string): Promise<AnalyzedListingDocument> {
+    const response = await fetch(`${this.baseUrl}${this.endpoints.analysis}/by-original-id/${originalId}`, {
+      headers: {
+        "Content-Type": "application/json",
+        "x-api-key": this.apiKey
+      },
+    });
+
+    if (!response.ok) {
+      throw new Error(`Failed to fetch listing analysis: ${response.statusText}`);
+    }
+
+    return response.json();
+  }
 }
 
-export const apiClient = new APIClient();
-
+const apiClient = new APIClient();
+export default apiClient;
+export { apiClient };

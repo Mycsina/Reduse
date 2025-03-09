@@ -25,7 +25,7 @@ export default function SimilarListings({ listingId }: { listingId: string }) {
     return <div>Loading...</div>;
   }
 
-  const listings = listingsResponse.map((response) => response.listing);
+  const listings = listingsResponse.map((response: { listing: Listing }) => response.listing);
 
   return (
     <div className="grid grid-cols-1 md:grid-cols-3 gap-4">

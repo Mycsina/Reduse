@@ -2,10 +2,10 @@
 
 """Product analysis prompt configuration."""
 
+import json
 from typing import Any, Dict, List, Optional
 
-from langchain_core.output_parsers import JsonOutputParser
-from langchain_core.pydantic_v1 import BaseModel, Field
+from pydantic import BaseModel, Field
 
 from ...config import settings
 from .base import BasePromptConfig, BasePromptTemplate
@@ -43,8 +43,8 @@ class ProductAnalysisTemplate(BasePromptTemplate):
 
     def __init__(self):
         """Initialize product analysis template."""
-        self.output_parser = JsonOutputParser(pydantic_object=ProductInfo)
-        
+        self.model = ProductInfo
+
         template = """
 Analyze the following product listing to identify and extract key information.
 
@@ -95,27 +95,57 @@ JSON Output:"""
 
     async def parse_output(self, output: str) -> ProductInfo:
         """Parse the model output into a structured format.
-        
+
         Args:
             output: Raw model output string
-            
+
         Returns:
             ProductInfo: Parsed product information
         """
-        return self.output_parser.parse(output)
+        # Clean up the output to handle potential formatting issues
+        output = output.strip()
 
-    def to_langchain(self):
-        """Get the LangChain-compatible prompt chain.
-        
+        # Try to extract JSON content between triple backticks if present
+        if "```json" in output:
+            # Extract JSON between ```json and ``` markers
+            start = output.find("```json") + 7
+            end = output.find("```", start)
+            if end > start:
+                output = output[start:end].strip()
+        elif "```" in output:
+            # Extract JSON between ``` markers
+            start = output.find("```") + 3
+            end = output.find("```", start)
+            if end > start:
+                output = output[start:end].strip()
+
+        try:
+            data = json.loads(output)
+            return ProductInfo(**data)
+        except json.JSONDecodeError as e:
+            raise ValueError(f"Failed to parse JSON output: {e}")
+        except Exception as e:
+            raise ValueError(f"Failed to validate parsed data: {e}")
+
+    def to_messages(self, **kwargs: Any) -> List[Dict[str, str]]:
+        """Convert the template to a list of messages for AI providers.
+
+        Args:
+            **kwargs: Variables to format the template with
+
         Returns:
-            Chain: LangChain prompt chain with output parsing
+            List[Dict[str, str]]: List of message dictionaries
         """
-        return super().to_langchain() | self.output_parser
+        formatted_user_message = self.format(**kwargs)
+        return [
+            {"role": "system", "content": self.config.system_prompt},
+            {"role": "user", "content": formatted_user_message},
+        ]
 
 
 def create_product_analysis_prompt() -> ProductAnalysisTemplate:
     """Create a product analysis prompt.
-    
+
     Returns:
         ProductAnalysisTemplate: Configured prompt template
     """

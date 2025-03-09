@@ -11,7 +11,10 @@ class VroomError(Exception):
     """Base exception class for all application errors."""
 
     def __init__(
-        self, message: str = "An error occurred", status_code: int = 500, details: Optional[Dict[str, Any]] = None
+        self,
+        message: str = "An error occurred",
+        status_code: int = 500,
+        details: Optional[Dict[str, Any]] = None,
     ):
         """Initialize the error.
 
@@ -44,7 +47,11 @@ class VroomError(Exception):
         Args:
             level: Logging level to use
         """
-        log_context = {"error_type": self.__class__.__name__, "status_code": self.status_code, **self.details}
+        log_context = {
+            "error_type": self.__class__.__name__,
+            "status_code": self.status_code,
+            **self.details,
+        }
         logger.log(level, f"{self.message}", extra=log_context)
 
 
@@ -78,7 +85,11 @@ class DocumentNotFoundError(DatabaseError):
             query: Query used to search for the document
         """
         message = f"{document_type} not found"
-        super().__init__(message=message, status_code=404, details={"document_type": document_type, "query": query})
+        super().__init__(
+            message=message,
+            status_code=404,
+            details={"document_type": document_type, "query": query},
+        )
 
 
 # AI Provider Errors
@@ -147,7 +158,9 @@ class ValidationError(VroomError):
 
 
 # Function to convert standard exceptions to application exceptions
-def convert_exception(exception: Exception, default_error_class: Type[VroomError] = VroomError) -> VroomError:
+def convert_exception(
+    exception: Exception, default_error_class: Type[VroomError] = VroomError
+) -> VroomError:
     """Convert a standard exception to an application exception.
 
     Args:
@@ -168,7 +181,9 @@ def convert_exception(exception: Exception, default_error_class: Type[VroomError
         error_class = ConnectionError
     elif isinstance(exception, KeyError):
         error_class = ValidationError
-        return ValidationError(field=str(exception), message=f"Missing required field: {exception}")
+        return ValidationError(
+            field=str(exception), message=f"Missing required field: {exception}"
+        )
     elif isinstance(exception, ValueError):
         error_class = ValidationError
         return ValidationError(field="value", message=message)

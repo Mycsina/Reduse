@@ -5,9 +5,9 @@ from typing import Optional
 
 from ...config import settings
 from .base import BaseProvider
+from .composite import CompositeProvider
 from .google import GoogleAIProvider
 from .groq import GroqProvider
-from .composite import CompositeProvider
 
 
 class AIProviderFactory:

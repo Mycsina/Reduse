@@ -1,5 +1,5 @@
 [tool.poetry]
-name = "vroom"
+name = "reduse"
 version = "0.1.0"
 description = ""
 authors = ["Mycsina <andremacardoso@gmail.com>"]
@@ -27,6 +27,8 @@ certifi = "*"
 sse-starlette = "^2.2.1"
 scikit-learn = "^1.6.1"
 llama-index = "^0.12.22"
+pydantic-to-typescript = "^2.0.0"
+redis = "^5.2.1"
 
 [tool.poetry.group.dev.dependencies]
 black = "^25.1.0"

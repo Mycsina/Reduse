@@ -101,7 +101,7 @@ export default function ListingContent({
     setSelectedImageIndex(actualIndex);
   };
 
-  const handleKeyDown = (e: KeyboardEvent) => {
+  const handleKeyDown = useCallback((e: KeyboardEvent) => {
     // Don't handle keyboard navigation if comparison modal is open
     if (isComparisonModalOpen) return;
 
@@ -127,16 +127,16 @@ export default function ListingContent({
         handleNextGroup();
       }
     }
-  };
+  }, [isComparisonModalOpen, selectedImageIndex, handlePrevImage, handleNextImage, numGroups, handlePrevGroup, handleNextGroup]);
 
   // Add keyboard event listener
   useEffect(() => {
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [selectedImageIndex, isComparisonModalOpen]); // Re-add listener when selectedImageIndex or modal state changes
+  }, [handleKeyDown]);
 
   // Function to fetch the next batch of listings
-  const fetchNextBatch = async () => {
+  const fetchNextBatch = useCallback(async () => {
     try {
       const skip = similarListings.length;
       const newListingsResponse = await apiClient.getSimilarListings(
@@ -173,7 +173,7 @@ export default function ListingContent({
       console.error("Error fetching next batch:", error);
       return null;
     }
-  };
+  }, [similarListings, listingId]);
 
   // Effect to prefetch next batch when we reach the middle of current batch
   useEffect(() => {
@@ -196,7 +196,7 @@ export default function ListingContent({
         setIsLoading(false);
       });
     }
-  }, [similarListings, isLoading, hasMore, nextBatch]);
+  }, [similarListings, isLoading, hasMore, nextBatch, fetchNextBatch]);
 
   // Function to append the next batch when needed
   const appendNextBatch = useCallback(() => {
@@ -254,7 +254,7 @@ export default function ListingContent({
                   onClick={() => handleImageClick(currentImageGroup, index)}
                 >
                   <Image
-                    src={url}
+                    src={url ?? ''}
                     alt={`${listing.title} - Photo ${index + 1}`}
                     fill
                     className="object-cover rounded-lg transition-opacity group-hover:opacity-90"
@@ -304,7 +304,7 @@ export default function ListingContent({
           <div>
             <h1 className="text-2xl font-bold mb-2">{listing.title}</h1>
             <p className="text-3xl font-bold text-primary">
-              {formatPrice(listing.price_value)}
+              {formatPrice(listing.price_value ? parseFloat(listing.price_value) : 0)}
             </p>
           </div>
 
@@ -330,7 +330,7 @@ export default function ListingContent({
             {selectedImageIndex !== null && (
               <>
                 <Image
-                  src={photos[selectedImageIndex]}
+                  src={photos[selectedImageIndex] ?? ''}
                   alt={`${listing.title} - Photo ${selectedImageIndex + 1}`}
                   fill
                   className="object-contain"

@@ -14,15 +14,11 @@ logger = logging.getLogger(__name__)
 
 async def init_cache() -> None:
     """Initialize the FastAPI cache with Redis backend.
-    
+
     This should be called during application startup.
     """
     try:
-        redis = aioredis.from_url(
-            settings.redis.uri,
-            encoding="utf8",
-            decode_responses=True
-        )
+        redis = aioredis.from_url(settings.redis.uri, encoding="utf8", decode_responses=True)
         FastAPICache.init(RedisBackend(redis), prefix="vroom-cache")
         logger.info("Cache initialized with Redis backend")
     except Exception as e:
@@ -32,7 +28,7 @@ async def init_cache() -> None:
 
 async def invalidate_cache_keys(*keys: str) -> None:
     """Invalidate specific cache keys.
-    
+
     Args:
         *keys: Variable number of cache keys to invalidate
     """
@@ -42,4 +38,4 @@ async def invalidate_cache_keys(*keys: str) -> None:
             logger.debug(f"Invalidated cache key: {key}")
     except Exception as e:
         logger.error(f"Failed to invalidate cache keys: {str(e)}")
-        raise 
+        raise

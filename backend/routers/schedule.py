@@ -3,7 +3,7 @@
 import logging
 import uuid
 from datetime import datetime
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Literal, Optional
 
 from apscheduler.jobstores.base import JobLookupError
 from apscheduler.triggers.cron import CronTrigger
@@ -75,12 +75,58 @@ class MaintenanceSchedule(ScheduleBase):
     update_indexes: bool = True  # Whether to update database indexes
 
 
+# Response models
+class ScheduleResponse(BaseModel):
+    """Response model for scheduling endpoints."""
+
+    message: str
+    job_id: str
+    config: Dict[str, Any]
+
+
+class SimpleJobResponse(BaseModel):
+    """Simple response for job operations."""
+
+    message: str
+    job_id: str
+
+
+class JobListResponse(BaseModel):
+    """Response model for job listing."""
+
+    jobs: List[Dict[str, Any]]
+
+
+class FunctionListResponse(BaseModel):
+    """Response model for available functions listing."""
+
+    functions: List[str]
+
+
+class FunctionInfoResponse(BaseModel):
+    """Response model for function information."""
+
+    name: str
+    description: str
+    parameters: Dict[str, Any]
+    required: List[str]
+
+
+class JobStatusResponse(BaseModel):
+    """Response model for job status."""
+
+    job_id: str
+    status: str
+    next_run_time: Optional[datetime] = None
+    runs: List[Dict[str, Any]]
+
+
 def generate_job_id(prefix: str) -> str:
     """Generate a unique job ID with a meaningful prefix."""
     return f"{prefix}_{uuid.uuid4().hex[:8]}"
 
 
-@router.post("/scrape")
+@router.post("/scrape", response_model=ScheduleResponse)
 async def schedule_scraping(config: ScrapeSchedule, _: str = Depends(verify_api_key)):
     """Schedule recurring scraping tasks for one or more URLs."""
     try:
@@ -122,16 +168,16 @@ async def schedule_scraping(config: ScrapeSchedule, _: str = Depends(verify_api_
             scraping_pipeline.__name__, task_config
         )
 
-        return {
-            "message": f"Scheduled scraping job {job_id}",
-            "job_id": job_id,
-            "config": config.dict(exclude={"job_id"}),
-        }
+        return ScheduleResponse(
+            message=f"Scheduled scraping job {job_id}",
+            job_id=job_id,
+            config=config.dict(exclude={"job_id"}),
+        )
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
 
 
-@router.post("/scrape/olx")
+@router.post("/scrape/olx", response_model=ScheduleResponse)
 async def schedule_olx_scraping(
     config: OLXScrapeSchedule, _: str = Depends(verify_api_key)
 ):
@@ -175,16 +221,16 @@ async def schedule_olx_scraping(
             olx_scraping_pipeline.__name__, task_config
         )
 
-        return {
-            "message": f"Scheduled OLX scraping job {job_id}",
-            "job_id": job_id,
-            "config": config.dict(exclude={"job_id"}),
-        }
+        return ScheduleResponse(
+            message=f"Scheduled OLX scraping job {config.job_id}",
+            job_id=config.job_id,
+            config=config.dict(exclude={"job_id"}),
+        )
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
 
 
-@router.post("/analysis")
+@router.post("/analysis", response_model=ScheduleResponse)
 async def schedule_analysis(config: AnalysisSchedule, _: str = Depends(verify_api_key)):
     """Schedule recurring analysis tasks."""
     try:
@@ -223,16 +269,16 @@ async def schedule_analysis(config: AnalysisSchedule, _: str = Depends(verify_ap
             analysis_pipeline.__name__, task_config
         )
 
-        return {
-            "message": f"Scheduled analysis job {job_id}",
-            "job_id": job_id,
-            "config": config.dict(exclude={"job_id"}),
-        }
+        return ScheduleResponse(
+            message=f"Scheduled analysis job {config.job_id}",
+            job_id=config.job_id,
+            config=config.dict(exclude={"job_id"}),
+        )
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
 
 
-@router.post("/maintenance")
+@router.post("/maintenance", response_model=ScheduleResponse)
 async def schedule_maintenance(
     config: MaintenanceSchedule, _: str = Depends(verify_api_key)
 ):
@@ -275,62 +321,63 @@ async def schedule_maintenance(
             maintenance_pipeline.__name__, task_config
         )
 
-        return {
-            "message": f"Scheduled maintenance job {job_id}",
-            "job_id": job_id,
-            "config": config.dict(exclude={"job_id"}),
-        }
+        return ScheduleResponse(
+            message=f"Scheduled maintenance job {config.job_id}",
+            job_id=config.job_id,
+            config=config.dict(exclude={"job_id"}),
+        )
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
 
 
-@router.get("/jobs")
+@router.get("/jobs", response_model=JobListResponse)
 async def list_jobs(_: str = Depends(verify_api_key)):
     """List all scheduled jobs."""
     await scheduler.init()
     jobs = scheduler.get_jobs()
     logger.info(f"Jobs: {jobs}")
-    return [
-        {
-            "id": job.id,
-            "next_run_time": job.next_run_time,
-            "func": job.func.__name__,
-            "trigger": str(job.trigger),
-            "max_instances": job.max_instances,
-        }
-        for job in jobs
-    ]
+    job_info = []
+    for job in jobs:
+        job_info.append(
+            {
+                "id": job.id,
+                "name": job.func.__name__ if hasattr(job, "func") else "Unknown",
+                "next_run_time": job.next_run_time,
+                # Add any other relevant job information
+            }
+        )
+    return JobListResponse(jobs=job_info)
 
 
-@router.put("/jobs/{job_id}/pause")
+@router.put("/jobs/{job_id}/pause", response_model=SimpleJobResponse)
 async def pause_job(job_id: str, _: str = Depends(verify_api_key)):
     """Pause a scheduled job."""
     try:
         await scheduler.init()
         scheduler.pause_job(job_id)
-        return {"message": f"Paused job {job_id}"}
+        return SimpleJobResponse(message=f"Paused job {job_id}", job_id=job_id)
     except JobLookupError:
         raise HTTPException(status_code=404, detail=f"Job {job_id} not found")
 
 
-@router.put("/jobs/{job_id}/resume")
+@router.put("/jobs/{job_id}/resume", response_model=SimpleJobResponse)
 async def resume_job(job_id: str, _: str = Depends(verify_api_key)):
     """Resume a paused job."""
     try:
         await scheduler.init()
         scheduler.resume_job(job_id)
-        return {"message": f"Resumed job {job_id}"}
+        return SimpleJobResponse(message=f"Resumed job {job_id}", job_id=job_id)
     except JobLookupError:
         raise HTTPException(status_code=404, detail=f"Job {job_id} not found")
 
 
-@router.delete("/jobs/{job_id}")
+@router.delete("/jobs/{job_id}", response_model=SimpleJobResponse)
 async def delete_job(job_id: str, _: str = Depends(verify_api_key)):
     """Delete a scheduled job."""
     try:
         await scheduler.init()
         scheduler.remove_job(job_id)
-        return {"message": f"Deleted job {job_id}"}
+        return SimpleJobResponse(message=f"Deleted job {job_id}", job_id=job_id)
     except JobLookupError:
         raise HTTPException(status_code=404, detail=f"Job {job_id} not found")
 
@@ -356,44 +403,27 @@ def _create_trigger(config: ScheduleBase):
         )
 
 
-@router.get("/functions")
+@router.get("/functions", response_model=FunctionListResponse)
 async def list_available_functions(_: str = Depends(verify_api_key)):
-    """List all available functions that can be scheduled as tasks."""
-    # Discover functions in the main package
-    functions = registry.discover_functions(".")
-    return {
-        "functions": [
-            {
-                "path": path,
-                "name": info.function_name,
-                "module": info.module_name,
-                "doc": info.doc,
-                "is_async": info.is_async,
-                "parameters": info.parameters,
-                "return_type": info.return_type,
-            }
-            for path, info in functions.items()
-        ]
-    }
+    """List all available functions that can be scheduled."""
+    funcs = registry.list_functions()
+    return FunctionListResponse(functions=funcs)
 
 
-@router.get("/functions/{function_path}")
+@router.get("/functions/{function_path}", response_model=FunctionInfoResponse)
 async def get_function_info(function_path: str, _: str = Depends(verify_api_key)):
-    """Get detailed information about a specific function."""
+    """Get information about a specific function."""
     info = registry.get_function_info(function_path)
     if not info:
         raise HTTPException(
             status_code=404, detail=f"Function {function_path} not found"
         )
-    return {
-        "path": function_path,
-        "name": info.function_name,
-        "module": info.module_name,
-        "doc": info.doc,
-        "is_async": info.is_async,
-        "parameters": info.parameters,
-        "return_type": info.return_type,
-    }
+    return FunctionInfoResponse(
+        name=info["name"],
+        description=info["description"],
+        parameters=info["parameters"],
+        required=info["required"],
+    )
 
 
 class CreateTaskRequest(BaseModel):
@@ -403,20 +433,16 @@ class CreateTaskRequest(BaseModel):
     config: TaskConfig
 
 
-@router.post("/functions/schedule")
+@router.post("/functions/schedule", response_model=SimpleJobResponse)
 async def schedule_function(
     request: CreateTaskRequest, _: str = Depends(verify_api_key)
 ):
-    """Schedule a function as a task."""
+    """Schedule a function to run on a recurring basis."""
     try:
-        job_id = await scheduler.schedule_function(
-            request.function_path, request.config
+        job_id = await registry.schedule_function(request.function_path, request.config)
+        return SimpleJobResponse(
+            message=f"Scheduled function {request.function_path}", job_id=job_id
         )
-        return {
-            "message": f"Scheduled function {request.function_path} as task",
-            "job_id": job_id,
-            "config": request.config.dict(exclude={"job_id"}),
-        }
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
 
@@ -428,28 +454,27 @@ class RunFunctionRequest(BaseModel):
     parameters: Optional[Dict[str, Any]] = None
 
 
-@router.post("/functions/run")
+@router.post("/functions/run", response_model=SimpleJobResponse)
 async def run_function(request: RunFunctionRequest, _: str = Depends(verify_api_key)):
     """Run a function once and return its job ID."""
     try:
         job_id = await registry.run_function_once(
             request.function_path, request.parameters
         )
-        return {
-            "message": f"Started function {request.function_path}",
-            "job_id": job_id,
-        }
+        return SimpleJobResponse(
+            message=f"Started function {request.function_path}", job_id=job_id
+        )
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
 
 
-@router.get("/jobs/{job_id}/status")
+@router.get("/jobs/{job_id}/status", response_model=JobStatusResponse)
 async def get_job_status(job_id: str, _: str = Depends(verify_api_key)):
     """Get the status of a job."""
     status = registry.get_job_status(job_id)
     if not status:
         raise HTTPException(status_code=404, detail=f"Job {job_id} not found")
-    return status
+    return JobStatusResponse(**status)
 
 
 @router.get("/jobs/{job_id}/logs")

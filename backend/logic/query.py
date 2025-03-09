@@ -6,20 +6,17 @@ from typing import List, Optional, Tuple
 from ..schemas.analysis import AnalyzedListingDocument
 from ..schemas.listings import AnalysisStatus, ListingDocument
 from ..schemas.query import FilterGroup
-from ..services.query import (
-    get_analyses_by_original_ids_data,
-    get_analysis_by_original_id_data,
-    get_analyzed_listing_data,
-    get_analyzed_listings_data,
-    get_distinct_info_fields_data,
-    get_listing_by_original_id_data,
-    get_listing_data,
-    get_listing_with_analysis_data,
-    get_listings_data,
-    get_listings_with_analysis_data,
-    get_similar_listings_data,
-    get_similar_listings_with_analysis_data,
-)
+from ..services.query import (get_analyses_by_original_ids_data,
+                              get_analysis_by_original_id_data,
+                              get_analyzed_listing_data,
+                              get_analyzed_listings_data,
+                              get_distinct_info_fields_data,
+                              get_listing_by_original_id_data,
+                              get_listing_data, get_listing_with_analysis_data,
+                              get_listings_data,
+                              get_listings_with_analysis_data,
+                              get_similar_listings_data,
+                              get_similar_listings_with_analysis_data)
 
 logger = logging.getLogger(__name__)
 

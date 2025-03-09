@@ -15,6 +15,9 @@ RUN curl -sSL https://install.python-poetry.org | python3 -
 # Copy poetry files
 COPY pyproject.toml poetry.lock ./
 
+# Install poetry-plugin-export
+RUN /root/.local/bin/poetry self add poetry-plugin-export
+
 # Export dependencies to requirements.txt
 RUN /root/.local/bin/poetry export -f requirements.txt > requirements.txt
 

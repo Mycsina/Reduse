@@ -27,7 +27,10 @@ class AIModel:
     ) -> "AIModel":
         """Create an AI model instance from a provider class."""
         provider = provider_class()
-        return cls(provider=provider, config=config or BasePromptConfig())
+        return cls(
+            provider=provider,
+            config=config or BasePromptConfig(model_name="", system_prompt=""),
+        )
 
     async def query(
         self,

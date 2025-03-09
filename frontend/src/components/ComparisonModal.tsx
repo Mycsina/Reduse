@@ -133,7 +133,12 @@ export default function ComparisonModal({
 
   const router = useRouter();
 
-  const prefetchListingData = (listingId: string) => {
+  const maxIndex = similarListings.length - 1;
+  const similarAnalysis = similarAnalyses[currentIndex] || null;
+
+  // Prefetch next listing data
+  const prefetchListingData = useCallback((listingId: string) => {
+    // Use Next.js router prefetching
     router.prefetch(`/listings/${listingId}`);
     apiClient.getListing(listingId); // Prime SWR cache
     apiClient.getSimilarListings(
@@ -142,9 +147,9 @@ export default function ComparisonModal({
       0,
       5
     ); // Prefetch initial similars
-  };
+  }, [router]);
 
-  // Prefetch images for adjacent listings
+  // Prefetch adjacent listings when current index changes
   useEffect(() => {
     if (isOpen && similarListings.length > 1) {
       const nextIndex = (currentIndex + 1) % similarListings.length;
@@ -166,7 +171,7 @@ export default function ComparisonModal({
       prefetchListingData(similarListings[nextIndex]._id);
       prefetchListingData(similarListings[prevIndex]._id);
     }
-  }, [isOpen, currentIndex, similarListings, router]);
+  }, [isOpen, currentIndex, similarListings, router, prefetchListingData]);
 
   const handleKeyDown = useCallback(
     (e: KeyboardEvent) => {
@@ -261,7 +266,6 @@ export default function ComparisonModal({
   }, [currentIndex, isOpen, nextBatch, similarListings.length]);
 
   const similarListing = similarListings[currentIndex];
-  const similarAnalysis = similarAnalyses[currentIndex];
 
   const comparisonData = getComparisonData(
     currentListing,
@@ -288,10 +292,14 @@ export default function ComparisonModal({
     }
   };
 
-  const renderPriceInfo = (
-    listing: Listing,
-    analysis: AnalyzedListing | null
-  ) => {
+  // Refactor renderPriceInfo into a proper React component
+  const PriceInfo = ({
+    listing,
+    analysis,
+  }: {
+    listing: Listing;
+    analysis: AnalyzedListing | null;
+  }) => {
     const [stats, setStats] = useState<PriceStats | null>(null);
     const [isUpdating, setIsUpdating] = useState(false);
 
@@ -342,7 +350,7 @@ export default function ComparisonModal({
     return (
       <div className="text-center">
         <p className="text-lg font-bold text-primary">
-          {formatPrice(listing.price_value)}
+          {formatPrice(listing.price_value ? parseFloat(listing.price_value) : 0)}
         </p>
         {stats && stats.sample_size >= 3 ? (
           <div className="text-sm text-muted-foreground space-y-1">
@@ -434,7 +442,7 @@ export default function ComparisonModal({
                   <p className="font-semibold text-sm mb-1 h-10 line-clamp-2 group-hover:text-primary transition-colors">
                     {currentListing.title}
                   </p>
-                  {renderPriceInfo(currentListing, currentAnalysis)}
+                  <PriceInfo listing={currentListing} analysis={currentAnalysis} />
                 </div>
               </div>
             </div>
@@ -470,7 +478,7 @@ export default function ComparisonModal({
                     <p className="font-semibold text-sm mb-1 h-10 line-clamp-2 group-hover:text-primary transition-colors">
                       {similarListing.title}
                     </p>
-                    {renderPriceInfo(similarListing, similarAnalysis)}
+                    <PriceInfo listing={similarListing} analysis={similarAnalysis} />
                   </div>
                 </div>
               </div>

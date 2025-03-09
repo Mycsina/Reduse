@@ -26,9 +26,7 @@ class GoogleAIProvider(BaseProvider):
         self._dimensions = 768  # Using models/text-embedding-004 model
         self.logger = logging.getLogger(__name__)
 
-    def _get_model(
-        self, model: str, temperature: float, max_tokens: Optional[int]
-    ) -> genai.GenerativeModel:
+    def _get_model(self, model: str, temperature: float, max_tokens: Optional[int]) -> genai.GenerativeModel:
         """Get or create a model instance with the specified parameters."""
         key = (model, temperature, max_tokens)
         if key not in self._models:
@@ -104,9 +102,7 @@ The response should be parseable by json.loads().
             try:
                 return json.loads(response_text)
             except json.JSONDecodeError as e:
-                self.logger.error(
-                    f"Couldn't parse JSON from model response: {response_text}"
-                )
+                self.logger.error(f"Couldn't parse JSON from model response: {response_text}")
                 raise ProviderError(f"Invalid JSON response: {e}")
 
         except exceptions.ResourceExhausted as e:
@@ -138,9 +134,7 @@ The response should be parseable by json.loads().
 
         # Track results and failures
         results: Dict[int, List[float]] = {}  # Index -> embedding
-        failed_indices: Set[int] = set(
-            range(len(texts))
-        )  # Start with all indices as failed
+        failed_indices: Set[int] = set(range(len(texts)))  # Start with all indices as failed
         retry_count = 0
         current_delay = base_batch_delay
 
@@ -161,10 +155,7 @@ The response should be parseable by json.loads().
             async def process_text(idx: int) -> None:
                 try:
                     text_to_process = self._clean_text(texts[idx])
-                    self.logger.debug(
-                        f"Processing text {idx + 1}/{len(texts)} - "
-                        f"Length: {len(text_to_process)}"
-                    )
+                    self.logger.debug(f"Processing text {idx + 1}/{len(texts)} - " f"Length: {len(text_to_process)}")
 
                     result = await loop.run_in_executor(
                         None,
@@ -177,22 +168,16 @@ The response should be parseable by json.loads().
                     )
 
                     if not result or "embedding" not in result:
-                        raise ProviderError(
-                            f"No embedding returned from model for text {idx + 1}"
-                        )
+                        raise ProviderError(f"No embedding returned from model for text {idx + 1}")
 
                     embedding = list(result["embedding"])
-                    self.logger.debug(
-                        f"Text {idx + 1}/{len(texts)} - Got embedding with {len(embedding)} dimensions"
-                    )
+                    self.logger.debug(f"Text {idx + 1}/{len(texts)} - Got embedding with {len(embedding)} dimensions")
                     results[idx] = embedding
 
                 except exceptions.ResourceExhausted:
                     nonlocal had_rate_limit
                     had_rate_limit = True
-                    self.logger.debug(
-                        f"Rate limit hit for text {idx + 1}, will retry after cooldown"
-                    )
+                    self.logger.debug(f"Rate limit hit for text {idx + 1}, will retry after cooldown")
                     new_failed_indices.add(idx)
                 except Exception as e:
                     self.logger.error(

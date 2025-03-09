@@ -7,11 +7,9 @@ from beanie import init_beanie
 from motor.motor_asyncio import AsyncIOMotorClient
 
 from .config import settings
-from .models.analysis import AnalyzedListingDocument
-from .models.batches import BatchDocument
-from .models.listings import ListingDocument
-from .models.schedule import ScheduleDocument
-from .models.usage import UsageDocument
+from .schemas.analysis import AnalyzedListingDocument
+from .schemas.batch import BatchJobDocument
+from .schemas.listings import ListingDocument
 
 logger = logging.getLogger(__name__)
 
@@ -29,18 +27,13 @@ async def init_db() -> None:
 
     client = AsyncIOMotorClient(settings.database.uri, **client_settings)
 
-    # Add health check function to client for monitoring
-    client.get_io_loop = lambda: None  # Workaround for event loop issues
-
     logger.info(f"Initializing Beanie with database: {settings.database.database_name}")
 
     # Initialize document models
     document_models = [
         ListingDocument,
         AnalyzedListingDocument,
-        BatchDocument,
-        ScheduleDocument,
-        UsageDocument,
+        BatchJobDocument,
     ]
 
     try:

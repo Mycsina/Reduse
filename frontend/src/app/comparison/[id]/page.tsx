@@ -2,7 +2,7 @@ import { notFound } from "next/navigation";
 import { Metadata } from "next";
 import Link from "next/link";
 import Image from "next/image";
-import { apiClient } from "@/lib/api-client";
+import apiClient from "@/lib/api-client";
 import {
   Table,
   TableBody,
@@ -38,8 +38,8 @@ function getComparisonData(
   const data: ComparisonData[] = [
     {
       field: "Price",
-      current: formatPrice(currentListing.price_value),
-      similar: formatPrice(similarListing.price_value),
+      current: formatPrice(currentListing.price_value ? parseFloat(currentListing.price_value) : 0),
+      similar: formatPrice(similarListing.price_value ? parseFloat(similarListing.price_value) : 0),
     },
     {
       field: "Type",
@@ -83,7 +83,7 @@ function getComparisonData(
 export default async function ComparisonPage({
   params,
 }: {
-  params: { id: string };
+  params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
 

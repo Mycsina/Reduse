@@ -1,6 +1,6 @@
 import { notFound } from "next/navigation";
 import { Metadata } from "next";
-import { apiClient } from "@/lib/api-client";
+import apiClient from "@/lib/api-client";
 import ListingContent from "./ListingContent";
 import { AnalysisStatus, Listing, AnalyzedListing } from "@/lib/types";
 import UpdateStatsButton from "./UpdateStatsButton";
@@ -25,25 +25,27 @@ interface SimilarListingResponse {
 export default async function ListingPage({
   params,
 }: {
-  params: { id: string };
+  params: Promise<{ id: string }>;
 }) {
-  const resolvedParams = await params;
-  const id = resolvedParams.id;
-
   try {
-    // Fetch listing and its analysis
+    const { id } = await params;
+    if (!id) {
+      notFound();
+    }
+
+    // Fetch listing data
     const listingResponse = (await apiClient.getListing(id)) as ListingResponse;
     const listing = listingResponse.listing;
     const analysis = listingResponse.analysis;
 
     // Fetch initial similar listings
     const initialSimilarListingsResponse =
-      listing.analysis_status === AnalysisStatus.COMPLETED
+      listing.analysis_status === "completed"
         ? ((await apiClient.getSimilarListings(
             id,
             ["type", "brand", "base_model", "model_variant"],
             0,
-            10
+            12
           )) as SimilarListingResponse[])
         : [];
 
@@ -67,14 +69,11 @@ export default async function ListingPage({
       modelStats && analysis?.brand && analysis?.base_model
         ? [
             {
-              brand: analysis.brand,
-              base_model: analysis.base_model,
+              model: `${analysis.brand} ${analysis.base_model}`,
               count: modelStats.sample_size,
-              avg_price: modelStats.avg_price,
-              median_price: modelStats.median_price,
-              min_price: modelStats.min_price,
-              max_price: modelStats.max_price,
-              timestamp: modelStats.timestamp,
+              avgPrice: parseFloat(modelStats.avg_price),
+              minPrice: parseFloat(modelStats.min_price),
+              maxPrice: parseFloat(modelStats.max_price),
             },
           ]
         : [];

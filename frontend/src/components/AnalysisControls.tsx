@@ -11,7 +11,7 @@ export default function AnalysisControls() {
   const router = useRouter();
 
   const handleAction = async (
-    action: () => Promise<void>,
+    action: () => Promise<any>,
     successMessage: string
   ) => {
     try {

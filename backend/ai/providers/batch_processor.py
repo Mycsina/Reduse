@@ -7,7 +7,7 @@ from datetime import datetime
 from typing import Any, Dict, List, Optional
 
 from beanie import Document
-from pydantic import Field, BaseModel
+from pydantic import BaseModel, Field
 
 logger = logging.getLogger(__name__)
 

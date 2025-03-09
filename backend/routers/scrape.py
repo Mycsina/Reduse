@@ -3,9 +3,10 @@
 import asyncio
 import json
 import logging
-from typing import Any
+from typing import Any, Dict, List, Optional
 
-from fastapi import APIRouter, BackgroundTasks, Depends, Header, HTTPException, Query
+from fastapi import (APIRouter, BackgroundTasks, Depends, Header,
+                     HTTPException, Query)
 from pydantic import BaseModel, HttpUrl
 from sse_starlette.sse import EventSourceResponse
 
@@ -51,7 +52,16 @@ async def send_progress(queue_id: str, phase: str, current: int, total: int):
 
 
 class ScrapeRequest(BaseModel):
+    """Request model for scraping a URL."""
+
     url: HttpUrl
+
+
+class QueuedTaskResponse(BaseModel):
+    """Response model for endpoints that start a background task."""
+
+    message: str
+    queue_id: str
 
 
 async def verify_api_key_sse(
@@ -85,7 +95,7 @@ async def stream_logs(
     return EventSourceResponse(event_generator())
 
 
-@router.post("/olx")
+@router.post("/olx", response_model=QueuedTaskResponse)
 async def parse_olx_categories(
     background_tasks: BackgroundTasks, _: str = Depends(verify_api_key)
 ):
@@ -110,10 +120,12 @@ async def parse_olx_categories(
             root_logger.removeHandler(handler)
 
     background_tasks.add_task(process_categories)
-    return {"message": "OLX category parsing started.", "queue_id": queue_id}
+    return QueuedTaskResponse(
+        message="OLX category parsing started.", queue_id=queue_id
+    )
 
 
-@router.post("/")
+@router.post("/", response_model=QueuedTaskResponse)
 async def scrape(
     request: ScrapeRequest,
     background_tasks: BackgroundTasks,
@@ -155,4 +167,4 @@ async def scrape(
             root_logger.removeHandler(handler)
 
     background_tasks.add_task(process_pipeline, str(request.url))
-    return {"message": "Started processing", "queue_id": queue_id}
+    return QueuedTaskResponse(message="Started processing", queue_id=queue_id)

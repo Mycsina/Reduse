@@ -54,9 +54,7 @@ async def query_listings(query: ListingQuery):
             limit=query.limit,
         )
         logger.debug(f"Results: {results}")
-        return [
-            ListingResponse(listing=result[0], analysis=result[1]) for result in results
-        ]
+        return [ListingResponse(listing=result[0], analysis=result[1]) for result in results]
     except Exception as e:
         logger.error(f"Query error: {e}")
         raise HTTPException(status_code=400, detail=f"Query error: {str(e)}")
@@ -75,9 +73,7 @@ async def get_similar_listings(
             skip=skip,
             limit=limit,
         )
-        return [
-            ListingResponse(listing=result[0], analysis=result[1]) for result in results
-        ]
+        return [ListingResponse(listing=result[0], analysis=result[1]) for result in results]
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"Query error: {str(e)}")
 

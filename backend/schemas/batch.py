@@ -5,8 +5,8 @@ from enum import Enum
 from typing import Dict, List, Optional
 
 from beanie import Document
-from pydantic import Field, BaseModel
 from bson import ObjectId
+from pydantic import BaseModel, Field
 
 
 class BatchStatus(str, Enum):
@@ -42,7 +42,9 @@ class BatchJobDocument(Document):
         default_factory=dict,
         description="Status of each request by index",
     )
-    error: Optional[str] = Field(None, description="Batch-level error message if failed")
+    error: Optional[str] = Field(
+        None, description="Batch-level error message if failed"
+    )
     created_at: datetime = Field(default_factory=datetime.utcnow)
     started_at: Optional[datetime] = Field(None)
     completed_at: Optional[datetime] = Field(None)
@@ -54,7 +56,10 @@ class BatchJobDocument(Document):
         indexes = [
             "batch_id",
             "status",
-            [("status", 1), ("created_at", -1)],  # For listing batches by status and age
+            [
+                ("status", 1),
+                ("created_at", -1),
+            ],  # For listing batches by status and age
         ]
 
     class Config:

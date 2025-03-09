@@ -9,15 +9,13 @@ from sklearn.metrics.pairwise import cosine_similarity
 from ..ai.providers.google import GoogleAIProvider
 from ..logic.query import get_distinct_info_fields
 from ..schemas.analytics import FieldMapping, ModelPriceStats
-from ..services.analytics import (
-    apply_field_mapping,
-    create_new_field_mapping,
-    get_active_field_mapping,
-    get_field_mapping_history,
-    get_model_price_history,
-    preview_field_mapping_reversion,
-    revert_field_mappings,
-)
+from ..services.analytics import (apply_field_mapping,
+                                  create_new_field_mapping,
+                                  get_active_field_mapping,
+                                  get_field_mapping_history,
+                                  get_model_price_history,
+                                  preview_field_mapping_reversion,
+                                  revert_field_mappings)
 
 logger = logging.getLogger(__name__)
 

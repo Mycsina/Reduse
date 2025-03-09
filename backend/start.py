@@ -9,12 +9,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from .db import init_db
 from .routers import analysis, analytics, query, schedule, scrape
 from .tasks.scheduler import start_scheduler
-from .utils.logging_config import (
-    EndpointLoggingRoute,
-    RequestLoggingMiddleware,
-    setup_endpoint_logging,
-    setup_logging,
-)
+from .utils.logging_config import EndpointLoggingRoute, RequestLoggingMiddleware, setup_endpoint_logging, setup_logging
 
 # Initialize logger
 logger = logging.getLogger(__name__)

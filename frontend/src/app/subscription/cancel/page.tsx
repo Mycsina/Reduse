@@ -16,7 +16,7 @@ export default function SubscriptionCancelPage() {
         <h1 className="text-2xl font-bold mb-4">Subscription Cancelled</h1>
         <p className="text-gray-600 mb-6">
           Your subscription process was cancelled. You can try again whenever
-          you're ready.
+          you&apos;re ready.
         </p>
         <div className="space-x-4">
           <Button

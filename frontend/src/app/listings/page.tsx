@@ -5,7 +5,7 @@ import { useSearchParams } from "next/navigation";
 import ListingsGrid from "@/components/ListingsGrid";
 import ListingsFilter from "@/components/ListingsFilter";
 import { Skeleton } from "@/components/ui/skeleton";
-import { FilterGroup } from "@/lib/types";
+import { FilterGroup } from "@/types/api";
 
 export default function ListingsPage() {
   const searchParams = useSearchParams();

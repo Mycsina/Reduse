@@ -23,4 +23,4 @@ class UserDocument(Document):
             [("is_premium", 1)],  # For premium user queries
             [("is_admin", 1)],  # For admin user queries
             [("created_at", -1)],  # For sorting by creation date
-        ] 
+        ]

@@ -1,5 +1,5 @@
 # Build stage
-FROM node:20-slim AS builder
+FROM oven/bun:slim AS builder
 
 # Set working directory
 WORKDIR /app
@@ -9,8 +9,8 @@ COPY package*.json ./
 COPY bun.lockb ./
 
 # Use build-time caching
-RUN --mount=type=cache,target=/app/.npm \
-  npm ci --cache /app/.npm
+RUN --mount=type=cache,target=/root/.bun/install/cache \
+  bun install --frozen-lockfile
 
 # Copy source code
 COPY . .
@@ -20,7 +20,7 @@ ENV NODE_ENV=production \
   NEXT_TELEMETRY_DISABLED=1
 
 # Build application
-RUN npm run build
+RUN bun run build
 
 # Production stage
 FROM node:20-slim AS runner

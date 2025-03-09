@@ -29,7 +29,7 @@ class DatabaseSettings(BaseSettings):
     """Database-related settings."""
 
     mongodb_uri: Optional[str] = Field(default=None, env="MONGODB_URI")  # type: ignore
-    atlas_user: str = Field(..., env="ATLAS_USER")  # type: ignore
+    atlas_user: str = Field(env="ATLAS_USER")  # type: ignore
     atlas_password: SecretStr = Field(..., env="ATLAS_PASSWORD")  # type: ignore
     database_name: str = Field(default="Vroom")
     max_pool_size: int = Field(default=10)

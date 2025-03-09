@@ -101,7 +101,9 @@ class CacheService:
             self.logger.warning(f"Failed to encode/cache JSON for key '{key}': {e}")
             return False
 
-    async def get_object(self, key: str, model_class: Type[T], ttl: Optional[int] = None) -> Optional[T]:
+    async def get_object(
+        self, key: str, model_class: Type[T], ttl: Optional[int] = None
+    ) -> Optional[T]:
         """Get a Pydantic model from cache.
 
         Args:
@@ -120,7 +122,9 @@ class CacheService:
                 self.logger.warning(f"Failed to parse model for key '{key}': {e}")
         return None
 
-    async def set_object(self, key: str, obj: BaseModel, ttl: Optional[int] = None) -> bool:
+    async def set_object(
+        self, key: str, obj: BaseModel, ttl: Optional[int] = None
+    ) -> bool:
         """Set a Pydantic model in cache.
 
         Args:
@@ -159,7 +163,9 @@ class CacheService:
             self.logger.warning(f"Complex cache get failed for key '{key}': {e}")
             return None
 
-    async def set_complex(self, key: str, value: Any, ttl: Optional[int] = None) -> bool:
+    async def set_complex(
+        self, key: str, value: Any, ttl: Optional[int] = None
+    ) -> bool:
         """Set a complex Python object in cache using pickle.
 
         Args:

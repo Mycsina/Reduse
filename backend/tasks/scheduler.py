@@ -8,17 +8,8 @@ import os
 import pkgutil
 import uuid
 from datetime import datetime
-from typing import (
-    Any,
-    AsyncGenerator,
-    Callable,
-    Dict,
-    List,
-    Optional,
-    Type,
-    Union,
-    get_type_hints,
-)
+from typing import (Any, AsyncGenerator, Callable, Dict, List, Optional, Type,
+                    Union, get_type_hints)
 
 from apscheduler.jobstores.mongodb import MongoDBJobStore
 from apscheduler.schedulers.asyncio import AsyncIOScheduler

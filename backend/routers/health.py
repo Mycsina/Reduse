@@ -2,9 +2,10 @@
 
 import logging
 import time
-from typing import Dict, Any, List
+from typing import Any, Dict, List, Literal
 
 from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel, Field
 
 from ..db import check_connection
 from ..utils.cache import cache
@@ -16,8 +17,39 @@ router = APIRouter(prefix="/health", tags=["System"])
 logger = logging.getLogger(__name__)
 
 
-@router.get("/", summary="System health check")
-async def health_check() -> Dict[str, Any]:
+class ServiceCheck(BaseModel):
+    """Model for individual service health check."""
+
+    name: str
+    status: Literal["healthy", "unhealthy"]
+    duration_ms: float | None = None
+    error: str | None = None
+
+
+class HealthCheckResponse(BaseModel):
+    """Response model for health check endpoint."""
+
+    status: Literal["healthy", "unhealthy"]
+    timestamp: float
+    duration_ms: float
+    checks: List[ServiceCheck]
+
+
+class SystemMetrics(BaseModel):
+    """Model for system uptime metrics."""
+
+    uptime: int = 0  # Uptime in seconds
+
+
+class MetricsResponse(BaseModel):
+    """Response model for metrics endpoint."""
+
+    timestamp: float
+    system: SystemMetrics
+
+
+@router.get("/", summary="System health check", response_model=HealthCheckResponse)
+async def health_check() -> HealthCheckResponse:
     """Basic health check endpoint.
 
     Returns:
@@ -27,7 +59,7 @@ async def health_check() -> Dict[str, Any]:
         HTTPException: If any critical service is unhealthy
     """
     start_time = time.time()
-    checks: List[Dict[str, Any]] = []
+    checks: List[ServiceCheck] = []
 
     # Check database connection
     try:
@@ -36,11 +68,11 @@ async def health_check() -> Dict[str, Any]:
         db_duration = time.time() - db_start
 
         checks.append(
-            {
-                "name": "database",
-                "status": "healthy" if db_healthy else "unhealthy",
-                "duration_ms": round(db_duration * 1000, 2),
-            }
+            ServiceCheck(
+                name="database",
+                status="healthy" if db_healthy else "unhealthy",
+                duration_ms=round(db_duration * 1000, 2),
+            )
         )
 
         if not db_healthy:
@@ -48,11 +80,11 @@ async def health_check() -> Dict[str, Any]:
     except Exception as e:
         logger.error(f"Database health check error: {e}")
         checks.append(
-            {
-                "name": "database",
-                "status": "unhealthy",
-                "error": str(e),
-            }
+            ServiceCheck(
+                name="database",
+                status="unhealthy",
+                error=str(e),
+            )
         )
 
     # Check Redis cache
@@ -65,11 +97,11 @@ async def health_check() -> Dict[str, Any]:
 
         cache_healthy = cache_value == "ok"
         checks.append(
-            {
-                "name": "cache",
-                "status": "healthy" if cache_healthy else "unhealthy",
-                "duration_ms": round(cache_duration * 1000, 2),
-            }
+            ServiceCheck(
+                name="cache",
+                status="healthy" if cache_healthy else "unhealthy",
+                duration_ms=round(cache_duration * 1000, 2),
+            )
         )
 
         if not cache_healthy:
@@ -77,46 +109,46 @@ async def health_check() -> Dict[str, Any]:
     except Exception as e:
         logger.error(f"Cache health check error: {e}")
         checks.append(
-            {
-                "name": "cache",
-                "status": "unhealthy",
-                "error": str(e),
-            }
+            ServiceCheck(
+                name="cache",
+                status="unhealthy",
+                error=str(e),
+            )
         )
 
     # Determine overall health
-    all_healthy = all(check["status"] == "healthy" for check in checks)
+    all_healthy = all(check.status == "healthy" for check in checks)
     status = "healthy" if all_healthy else "unhealthy"
 
     # Create response
-    response = {
-        "status": status,
-        "timestamp": time.time(),
-        "duration_ms": round((time.time() - start_time) * 1000, 2),
-        "checks": checks,
-    }
+    response = HealthCheckResponse(
+        status=status,
+        timestamp=time.time(),
+        duration_ms=round((time.time() - start_time) * 1000, 2),
+        checks=checks,
+    )
 
     # Return 503 if unhealthy
     if not all_healthy:
-        raise HTTPException(status_code=503, detail=response)
+        raise HTTPException(status_code=503, detail=response.dict())
 
     return response
 
 
-@router.get("/metrics", summary="System metrics")
-async def system_metrics() -> Dict[str, Any]:
+@router.get("/metrics", summary="System metrics", response_model=MetricsResponse)
+async def system_metrics() -> MetricsResponse:
     """Endpoint for system metrics.
 
     Returns:
         A dictionary of system metrics
     """
     # Start with basic metrics
-    metrics = {
-        "timestamp": time.time(),
-        "system": {
-            "uptime": 0,  # TODO: Implement actual uptime tracking
-        },
-    }
+    metrics = MetricsResponse(
+        timestamp=time.time(),
+        system=SystemMetrics(
+            uptime=0,  # TODO: Implement actual uptime tracking
+        ),
+    )
 
     # Add database metrics if available
     try:
