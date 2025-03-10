@@ -1,5 +1,6 @@
 """Application-wide configuration settings."""
 
+from enum import Enum
 from pathlib import Path
 from typing import Any, Dict, Optional
 
@@ -13,6 +14,12 @@ load_dotenv(override=True)
 # Base paths
 BASE_DIR = Path(__file__).parent
 LOGS_DIR = BASE_DIR / "logs"
+
+
+class PROVIDER_TYPE(Enum):
+    GOOGLE = "google"
+    GROQ = "groq"
+    COMPOSITE = "composite"
 
 
 class APISettings(BaseSettings):
@@ -58,8 +65,7 @@ class AISettings(BaseSettings):
     google_api_key: SecretStr = Field(default="", env="GOOGLE_API_KEY")  # type: ignore
     openai_api_key: SecretStr = Field(default="", env="OPENAI_API_KEY")  # type: ignore
     groq_api_key: SecretStr = Field(default="", env="GROQ_API_KEY")  # type: ignore
-    default_model: str = Field(default="gemini-2.0-flash-exp")
-    default_provider: str = Field(default="composite")  # Default to the composite provider
+    default_provider: PROVIDER_TYPE = Field(default=PROVIDER_TYPE.COMPOSITE)  # Default to the composite provider
     rate_limits: Dict[str, int] = Field(
         default={
             "requests_per_minute": 60,

@@ -27,7 +27,6 @@ class ProductAnalysisConfig(BasePromptConfig):
     def __init__(self):
         """Initialize product analysis configuration."""
         super().__init__(
-            model_name=settings.ai.default_model,
             temperature=0.1,  # Low temperature for consistent, factual responses
             max_tokens=8192,
             system_prompt=(

@@ -392,6 +392,13 @@ class APIClient {
 
     return response.json();
   }
+
+  async naturalLanguageQuery(query: string): Promise<{ structured_query: any }> {
+    return this.fetch(`${this.endpoints.query}${this.endpoints.listings}/natural`, {
+      method: 'POST',
+      body: JSON.stringify({ query })
+    });
+  }
 }
 
 const apiClient = new APIClient();

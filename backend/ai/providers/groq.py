@@ -11,6 +11,7 @@ from httpx import HTTPStatusError
 from .base import BaseProvider, ProviderError, RateLimitError
 
 
+
 class GroqProvider(BaseProvider):
     """Groq AI implementation."""
 
@@ -22,20 +23,20 @@ class GroqProvider(BaseProvider):
         """
         super().__init__()
         self.client = AsyncGroq(api_key=api_key)
+        self.model = "llama-3.1-8b-instant" 
         self._dimensions = 768  # Same as Gemini for compatibility
         self.logger = logging.getLogger(__name__)
 
     async def generate_text(
         self,
         prompt: str,
-        model: str,
         temperature: float = 0.7,
         max_tokens: Optional[int] = None,
     ) -> str:
         """Generate text from the model."""
         try:
             response: ChatCompletion = await self.client.chat.completions.create(
-                model=model,
+                model=self.model,
                 messages=[{"role": "user", "content": prompt}],
                 temperature=temperature,
                 max_tokens=max_tokens,

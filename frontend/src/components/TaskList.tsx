@@ -34,8 +34,8 @@ export default function TaskList() {
 
   const fetchScheduledJobs = async () => {
     try {
-      const jobs = await apiClient.getScheduledJobs();
-      setScheduledJobs(jobs);
+      const response = await apiClient.getScheduledJobs();
+      setScheduledJobs(response.jobs);
     } catch (error) {
       toast({
         title: "Failed to fetch scheduled jobs",

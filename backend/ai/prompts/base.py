@@ -8,7 +8,6 @@ from pydantic import BaseModel, Field
 class BasePromptConfig(BaseModel):
     """Base configuration for prompts."""
 
-    model_name: str
     temperature: float = Field(default=0.7, ge=0.0, le=1.0)
     max_tokens: Optional[int] = Field(default=None, gt=0)
     system_prompt: str
@@ -16,9 +15,9 @@ class BasePromptConfig(BaseModel):
     def to_dict(self) -> Dict[str, Any]:
         """Convert config to dictionary."""
         return {
-            "model": self.model_name,
             "temperature": self.temperature,
             "max_tokens": self.max_tokens,
+            "system_prompt": self.system_prompt
         }
 
 

@@ -1,6 +1,7 @@
 """Listing query endpoints."""
 
 import logging
+import traceback
 from typing import Dict, List, Optional
 
 from fastapi import APIRouter, HTTPException
@@ -37,6 +38,16 @@ class ListingResponse(BaseModel):
     analysis: Optional[AnalyzedListingDocument]
 
 
+class NaturalLanguageQueryRequest(BaseModel):
+    """Request model for natural language query."""
+    query: str = Field(..., description="Natural language query string")
+
+
+class NaturalLanguageQueryResponse(BaseModel):
+    """Response model for natural language query."""
+    structured_query: ListingQuery
+
+
 router = APIRouter(prefix="/listings")
 
 
@@ -53,11 +64,10 @@ async def query_listings(query: ListingQuery):
             skip=query.skip,
             limit=query.limit,
         )
-        logger.debug(f"Results: {results}")
         return [ListingResponse(listing=result[0], analysis=result[1]) for result in results]
     except Exception as e:
-        logger.error(f"Query error: {e}")
-        raise HTTPException(status_code=400, detail=f"Query error: {str(e)}")
+        logger.error(f"Error querying listings: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @router.post("/similar/{listing_id}", response_model=List[ListingResponse])
@@ -93,3 +103,25 @@ async def get_available_fields():
     main_fields = ["type", "brand", "base_model", "model_variant"]
     info_fields = await query_logic.get_distinct_info_fields()
     return {"main_fields": main_fields, "info_fields": info_fields}
+
+
+@router.post("/natural", response_model=NaturalLanguageQueryResponse)
+async def natural_language_query(request: NaturalLanguageQueryRequest):
+    """
+    Process a natural language query and return a structured ListingQuery.
+    
+    This endpoint converts a natural language description into a structured query
+    that can be used with the standard listing query endpoint.
+    """
+    try:
+        # Delegate logic to the query module
+        structured_query = await query_logic.process_natural_language_query(request.query)
+        
+        # Return the structured query
+        return NaturalLanguageQueryResponse(
+            structured_query=structured_query
+        )
+    except Exception as e:
+        raise e
+        logger.error(f"Error processing natural language query: {e}")
+        raise HTTPException(status_code=500, detail=str(e))

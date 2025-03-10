@@ -165,11 +165,20 @@ export default function ComparisonModal({
         document.head.appendChild(imgElement);
       };
 
-      prefetchImage(similarListings[nextIndex].photo_urls[0]);
-      prefetchImage(similarListings[prevIndex].photo_urls[0]);
+      // Add null checks before accessing properties
+      if (similarListings[nextIndex]?.photo_urls?.[0]) {
+        prefetchImage(similarListings[nextIndex].photo_urls[0]);
+      }
+      if (similarListings[prevIndex]?.photo_urls?.[0]) {
+        prefetchImage(similarListings[prevIndex].photo_urls[0]);
+      }
 
-      prefetchListingData(similarListings[nextIndex]._id);
-      prefetchListingData(similarListings[prevIndex]._id);
+      if (similarListings[nextIndex]?._id) {
+        prefetchListingData(similarListings[nextIndex]._id);
+      }
+      if (similarListings[prevIndex]?._id) {
+        prefetchListingData(similarListings[prevIndex]._id);
+      }
     }
   }, [isOpen, currentIndex, similarListings, router, prefetchListingData]);
 
@@ -199,7 +208,7 @@ export default function ComparisonModal({
     try {
       setIsLoading(true);
       const newListingsResponse = await apiClient.getSimilarListings(
-        currentListing._id,
+        currentListing._id!, // Add non-null assertion since we know this exists in this context
         ["type", "brand", "base_model", "model_variant"],
         similarListings.length,
         10
@@ -308,7 +317,7 @@ export default function ComparisonModal({
         apiClient
           .getCurrentModelStats(analysis.base_model)
           .then((data) => {
-            setStats(data);
+            setStats({ ...data, model: analysis.base_model });
           })
           .catch((error) => {
             console.error("Failed to fetch model stats:", error);

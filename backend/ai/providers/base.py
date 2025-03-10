@@ -30,7 +30,6 @@ class BaseProvider(ABC):
     async def generate_text(
         self,
         prompt: str,
-        model: str,
         temperature: float = 0.7,
         max_tokens: Optional[int] = None,
     ) -> str:
@@ -38,7 +37,6 @@ class BaseProvider(ABC):
 
         Args:
             prompt: The input prompt
-            model: Model identifier
             temperature: Sampling temperature
             max_tokens: Maximum tokens to generate
 
@@ -55,7 +53,6 @@ class BaseProvider(ABC):
     async def generate_json(
         self,
         prompt: str,
-        model: str,
         temperature: float = 0.7,
         max_tokens: Optional[int] = None,
     ) -> Dict[str, Any]:
@@ -63,7 +60,6 @@ class BaseProvider(ABC):
 
         Args:
             prompt: The input prompt
-            model: Model identifier
             temperature: Sampling temperature
             max_tokens: Maximum tokens to generate
 
