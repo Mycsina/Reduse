@@ -9,8 +9,8 @@ from beanie import PydanticObjectId
 from beanie.operators import Or, RegEx
 
 from ..schemas.analysis import AnalyzedListingDocument
+from ..schemas.filtering import FilterCondition, FilterGroup, FilterGroupType
 from ..schemas.listings import AnalysisStatus, ListingDocument
-from ..schemas.query import FilterCondition, FilterGroup, FilterGroupType
 
 logger = logging.getLogger(__name__)
 

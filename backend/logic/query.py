@@ -7,10 +7,9 @@ from typing import List, Optional, Tuple
 
 from ..ai.prompts.listing_query import ListingQueryPrompt
 from ..ai.providers.factory import create_provider
-from ..routers.query.listings import ListingQuery
 from ..schemas.analysis import AnalyzedListingDocument
+from ..schemas.filtering import FilterGroup, ListingQuery
 from ..schemas.listings import AnalysisStatus, ListingDocument
-from ..schemas.query import FilterGroup
 from ..services.query import (get_analyses_by_original_ids_data,
                               get_analysis_by_original_id_data,
                               get_analyzed_listing_data,

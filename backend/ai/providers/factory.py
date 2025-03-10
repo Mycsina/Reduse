@@ -1,11 +1,11 @@
 """AI provider factory for creating provider instances."""
 
-from enum import Enum
 import logging
+from enum import Enum
 from token import OP
 from typing import Optional
 
-from ...config import settings, PROVIDER_TYPE
+from ...config import PROVIDER_TYPE, settings
 from .base import BaseProvider
 from .composite import CompositeProvider
 from .google import GoogleAIProvider

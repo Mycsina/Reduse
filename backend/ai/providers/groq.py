@@ -11,7 +11,6 @@ from httpx import HTTPStatusError
 from .base import BaseProvider, ProviderError, RateLimitError
 
 
-
 class GroqProvider(BaseProvider):
     """Groq AI implementation."""
 
@@ -23,7 +22,7 @@ class GroqProvider(BaseProvider):
         """
         super().__init__()
         self.client = AsyncGroq(api_key=api_key)
-        self.model = "llama-3.1-8b-instant" 
+        self.model = "llama-3.1-8b-instant"
         self._dimensions = 768  # Same as Gemini for compatibility
         self.logger = logging.getLogger(__name__)
 

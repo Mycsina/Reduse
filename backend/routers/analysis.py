@@ -143,6 +143,7 @@ async def cancel_analysis(_: str = Depends(verify_api_key)):
     )
 
 
+# TODO common message
 @router.post("/regenerate-embeddings")
 async def regenerate_embeddings(
     background_tasks: BackgroundTasks, _: str = Depends(verify_api_key)

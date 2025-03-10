@@ -14,11 +14,7 @@ class BasePromptConfig(BaseModel):
 
     def to_dict(self) -> Dict[str, Any]:
         """Convert config to dictionary."""
-        return {
-            "temperature": self.temperature,
-            "max_tokens": self.max_tokens,
-            "system_prompt": self.system_prompt
-        }
+        return {"temperature": self.temperature, "max_tokens": self.max_tokens, "system_prompt": self.system_prompt}
 
 
 # Define message types for clarity
