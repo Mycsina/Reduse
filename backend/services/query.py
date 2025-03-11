@@ -366,6 +366,44 @@ async def get_distinct_info_fields_data() -> List[str]:
     return [doc["_id"] for doc in result]
 
 
+async def get_info_field_values(
+    field_name: str, limit: int = 10
+) -> List[Tuple[str, int]]:
+    """Get the most common values for a specific info field.
+
+    Args:
+        field_name: Name of the field to retrieve values for
+        limit: Maximum number of values to return
+
+    Returns:
+        List of (value, count) tuples for the most common values
+    """
+    # Create the aggregation pipeline to get value frequencies
+    pipeline = [
+        # Match only documents with this field
+        {"$match": {f"info.{field_name}": {"$exists": True, "$ne": None}}},
+        # Group by value and count occurrences
+        {"$group": {"_id": f"$info.{field_name}", "count": {"$sum": 1}}},
+        # Sort by count descending
+        {"$sort": {"count": -1}},
+        # Limit to top N values
+        {"$limit": limit},
+    ]
+
+    try:
+        # Execute the pipeline
+        logger.debug(f"Getting common values for field: {field_name}")
+        result = await AnalyzedListingDocument.aggregate(pipeline).to_list()
+
+        # Format the result
+        values = [(str(doc["_id"]), doc["count"]) for doc in result]
+        logger.debug(f"Found {len(values)} common values for field: {field_name}")
+        return values
+    except Exception as e:
+        logger.error(f"Error getting values for field {field_name}: {str(e)}")
+        return []
+
+
 async def get_similar_listings_with_analysis_data(
     listing_id: str, skip: int = 0, limit: int = 12
 ) -> List[Tuple[ListingDocument, Optional[AnalyzedListingDocument]]]:

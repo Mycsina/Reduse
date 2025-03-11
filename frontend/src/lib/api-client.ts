@@ -7,14 +7,23 @@ import {
   CreateTaskRequest,
   SimpleJobResponse,
   ScheduleResponse,
-  JobListResponse,
-  JobStatusResponse,
-  FunctionListResponse,
-  FunctionInfoResponse,
   QueuedTaskResponse,
   UpdateStatsResponse,
-  ListingQuery
+  ListingQuery,
+  FunctionInfo,
+  JobStatus
 } from "../types/api";
+
+// Local interface definitions for types that may not be exported from api.ts
+interface JobListResponse {
+  jobs: {
+    [k: string]: unknown;
+  }[];
+}
+
+interface FunctionInfoResponse extends FunctionInfo { }
+
+interface JobStatusResponse extends JobStatus { }
 
 // Type alias for backward compatibility
 type AnalyzedListing = AnalyzedListingDocument;
@@ -31,8 +40,10 @@ class APIClient {
     listings: '/listings',
     analysis: '/analysis',
     scrape: '/scrape',
-    schedule: '/schedule',
     analytics: '/analytics',
+    tasks: '/tasks',
+    schedule: '/tasks/schedule',
+    functions: '/tasks/functions'
   };
 
   constructor() {
@@ -187,12 +198,23 @@ class APIClient {
     return this.fetch(`${this.endpoints.schedule}/jobs`);
   }
 
-  async getAvailableFunctions(): Promise<FunctionListResponse> {
-    return this.fetch(`${this.endpoints.schedule}/functions`);
+  async getAvailableFunctions(): Promise<FunctionInfo[]> {
+    try {
+      const response = await this.fetch(`${this.endpoints.functions}/`);
+      // Ensure response is an array
+      if (!Array.isArray(response)) {
+        console.error("Unexpected response format from functions API", response);
+        return [];
+      }
+      return response;
+    } catch (error) {
+      console.error("Error fetching available functions:", error);
+      throw error;
+    }
   }
 
   async getFunctionInfo(functionPath: string): Promise<FunctionInfoResponse> {
-    return this.fetch(`${this.endpoints.schedule}/functions/${functionPath}`);
+    return this.fetch(`${this.endpoints.functions}/${functionPath}`);
   }
 
   async scheduleFunction(functionPath: string, config: TaskConfig): Promise<ScheduleResponse> {

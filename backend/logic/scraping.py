@@ -1,8 +1,8 @@
 import logging
 
 from ..schemas.listings import ListingDocument, OriginalId, save_listings
-from ..services.olx import OLXScraper
-from ..services.scraper_base import ScraperNotFoundError, ScraperRegistry
+from ..services.scraper import (OLXScraper, ScraperNotFoundError,
+                                ScraperRegistry)
 from .analysis import analyze_new_listings
 
 scraper_registry = ScraperRegistry()

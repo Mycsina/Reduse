@@ -3,24 +3,16 @@
 import logging
 from typing import List, Optional
 
-from fastapi import APIRouter, BackgroundTasks, Depends
+from fastapi import APIRouter
 from pydantic import BaseModel
 
 from ..schemas.analytics import ModelPriceStats
-from ..security import verify_api_key
 from ..services.analytics import (get_current_model_price_stats,
-                                  get_model_price_history,
-                                  update_model_price_stats)
+                                  get_model_price_history)
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/analytics")
-
-
-class UpdateStatsResponse(BaseModel):
-    """Response model for update stats endpoint."""
-
-    message: str
 
 
 @router.get("/current/{base_model}", response_model=Optional[ModelPriceStats])
@@ -43,13 +35,3 @@ async def get_model_stats_history(
 ) -> List[ModelPriceStats]:
     """Get price statistics history for a specific model."""
     return await get_model_price_history(base_model=base_model, days=days, limit=limit)
-
-
-@router.post("/update-stats", response_model=UpdateStatsResponse)
-async def update_price_stats(
-    background_tasks: BackgroundTasks,
-    _: str = Depends(verify_api_key),
-):
-    """Create new price statistics for all models."""
-    background_tasks.add_task(update_model_price_stats)
-    return UpdateStatsResponse(message="Started updating price statistics")

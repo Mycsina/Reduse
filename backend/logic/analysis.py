@@ -9,7 +9,7 @@ from tqdm import tqdm
 from ..ai.base import AIModel
 from ..ai.providers.google import GoogleAIProvider
 from ..config import settings
-from ..schemas.analysis import AnalyzedListingDocument
+from ..schemas.analysis import AnalysisStats, AnalyzedListingDocument
 from ..schemas.listings import AnalysisStatus, ListingDocument
 from ..services.analysis import AnalysisService
 
@@ -89,7 +89,7 @@ async def resume_analysis() -> None:
     await analyze_and_save(in_progress)
 
 
-async def get_analysis_status() -> Dict[str, Any]:
+async def get_analysis_status() -> AnalysisStats:
     """Get the current status of listing analysis.
 
     Returns:
@@ -111,22 +111,25 @@ async def get_analysis_status() -> Dict[str, Any]:
             {"retry_count": {"$gte": settings.ai.rate_limits["max_retries"]}}
         ).count()
 
-        return {
-            "total": total,
-            "completed": completed,
-            "pending": pending,
-            "failed": failed,
-            "in_progress": in_progress,
-            "max_retries_reached": max_retries,
-            "can_process": pending > 0 or failed > 0,
-        }
+        return AnalysisStats(
+            total=total,
+            completed=completed,
+            pending=pending,
+            failed=failed,
+            in_progress=in_progress,
+            max_retries_reached=max_retries,
+        )
 
     except Exception as e:
         logger.error(f"Error getting analysis status: {str(e)}")
-        return {
-            "error": str(e),
-            "can_process": False,
-        }
+        return AnalysisStats(
+            total=0,
+            completed=0,
+            pending=0,
+            failed=0,
+            in_progress=0,
+            max_retries_reached=0,
+        )
 
 
 async def change_state(listings: List[ListingDocument], status: AnalysisStatus) -> None:

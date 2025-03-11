@@ -7,9 +7,8 @@
 - `ai/`: AI-related components and providers
   - `providers/`: AI service integrations (Google AI, Groq)
   - `prompts/`: Prompt templates and configurations
-- `models/`: MongoDB document models using Beanie ODM
+- `schemas/`: MongoDB document models using Beanie ODM
 - `routers/`: FastAPI route handlers
-- `schemas/`: Pydantic models for request/response validation
 - `services/`: Business logic and external service integrations
 - `tasks/`: Background tasks and scheduled jobs
 - `utils/`: Utility functions and helpers
@@ -34,7 +33,7 @@
 
 1. All database operations must go through models defined in `models/`
 2. API endpoints must use Pydantic models from `schemas/` for validation
-3. Business logic should be in `services/`, not in route handlers
+3. Business logic should be in `logic/`, not in route handlers
 4. AI operations must use providers from `ai/providers/`
 5. Background tasks must be defined in `tasks/`
 6. Configuration must be centralized in `config.py`
@@ -55,8 +54,7 @@
 
 1. All code must be typed (Python type hints, TypeScript)
 2. All functions must have docstrings/JSDoc comments
-3. All API endpoints must be documented with OpenAPI
-4. All components must be accessible (WCAG 2.1)
+4. All components must be accessible
 5. All errors must be properly handled and logged
 6. All sensitive data must be properly secured
 7. All external service calls must be retryable and timeout-protected
@@ -88,7 +86,6 @@
 
 1. All AI providers must implement the BaseProvider interface
 2. AI operations must be retryable and handle rate limits
-3. Prompts must be versioned and use structured templates
 4. Analysis results must be validated against schemas
 5. Embeddings must be cached when possible
 
@@ -98,13 +95,10 @@
 2. External API calls must use retry mechanisms
 3. Data collection must be resumable from failures
 4. All collected data must be validated before storage
-5. Scraping schedules must be configurable
 
 ### Task Management Rules
 
-1. Tasks must be idempotent
 2. Task status must be trackable
-3. Failed tasks must be automatically retried
 4. Long-running tasks must be cancellable
 5. Task results must be persistently stored
 
@@ -115,14 +109,6 @@
 3. Query patterns must be analyzed and optimized
 4. Custom metrics must be properly documented
 5. Analytics data must be regularly archived
-
-### User Management Rules
-
-1. Subscription changes must be atomic
-2. Usage limits must be enforced consistently
-3. Payment processing must be idempotent
-4. User preferences must be cached
-5. Access control must be role-based
 
 ### Frontend Feature Rules
 
@@ -143,7 +129,6 @@
 ## Database Rules
 
 1. Use MongoDB Atlas for production deployments
-2. Local development must use a dedicated Atlas cluster
 3. All collections must have defined indexes in models
 4. Database migrations must be handled through Beanie
 5. Connection pooling must be configured in `db.py`

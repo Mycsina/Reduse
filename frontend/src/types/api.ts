@@ -38,6 +38,49 @@ export interface AnalysisStatus {
   max_retries_reached: number;
   can_process?: boolean;
 }
+export interface AnalysisStatusResponse {
+  message: string;
+  can_retry?: boolean | null;
+  can_start?: boolean | null;
+  can_resume?: boolean | null;
+  total?: number | null;
+  completed?: number | null;
+  pending?: number | null;
+  failed?: number | null;
+  in_progress?: number | null;
+  max_retries_reached?: number | null;
+}
+/**
+ * Schema for analyzed listings.
+ *
+ * This schema stores the results of product analysis, including:
+ * 1. Core product identification (type, brand, base model, variant)
+ * 2. Additional product information (specs, condition, etc.)
+ * 3. Analysis metadata (version, retry count)
+ * 4. Vector embeddings for similarity search
+ */
+export interface AnalyzedListingDocument {
+  /**
+   * MongoDB document ObjectID
+   */
+  _id?: string | null;
+  parsed_listing_id: string | null;
+  original_listing_id: string;
+  type?: string | null;
+  brand?: string | null;
+  base_model?: string | null;
+  model_variant?: string | null;
+  info?: {
+    [k: string]: unknown;
+  };
+  embeddings?: number[] | null;
+  analysis_version: string;
+  retry_count?: number;
+}
+export interface CancelAnalysisResponse {
+  message: string;
+  cancelled: number;
+}
 /**
  * Request model for creating a task from a function.
  */
@@ -66,58 +109,33 @@ export interface TaskConfig {
   [k: string]: unknown;
 }
 /**
- * Response model for function information.
+ * Information about a discovered function.
  */
-export interface FunctionInfoResponse {
-  name: string;
-  description: string;
+export interface FunctionInfo {
+  module_name: string;
+  function_name: string;
+  full_path: string;
+  doc: string | null;
+  is_async: boolean;
   parameters: {
-    [k: string]: unknown;
+    [k: string]: {
+      [k: string]: unknown;
+    };
   };
-  required: string[];
+  return_type: string | null;
+}
+export interface InfoFieldsResponse {
+  main_fields: string[];
+  info_fields: string[];
 }
 /**
- * Response model for available functions listing.
+ * Status of a running job.
  */
-export interface FunctionListResponse {
-  functions: string[];
-}
-/**
- * Response model for health check endpoint.
- */
-export interface HealthCheckResponse {
-  status: "healthy" | "unhealthy";
-  timestamp: number;
-  duration_ms: number;
-  checks: ServiceCheck[];
-}
-/**
- * Model for individual service health check.
- */
-export interface ServiceCheck {
-  name: string;
-  status: "healthy" | "unhealthy";
-  duration_ms?: number | null;
-  error?: string | null;
-}
-/**
- * Response model for job listing.
- */
-export interface JobListResponse {
-  jobs: {
-    [k: string]: unknown;
-  }[];
-}
-/**
- * Response model for job status.
- */
-export interface JobStatusResponse {
+export interface JobStatus {
   job_id: string;
   status: string;
-  next_run_time?: string | null;
-  runs: {
-    [k: string]: unknown;
-  }[];
+  result?: unknown;
+  error?: string | null;
 }
 /**
  * Query model for standard listing queries.
@@ -135,6 +153,7 @@ export interface ListingQuery {
 export interface PriceFilter {
   min?: number | null;
   max?: number | null;
+  [k: string]: unknown;
 }
 /**
  * Model for a group of filter conditions.
@@ -190,34 +209,6 @@ export interface ListingDocument {
   [k: string]: unknown;
 }
 /**
- * Schema for analyzed listings.
- *
- * This schema stores the results of product analysis, including:
- * 1. Core product identification (type, brand, base model, variant)
- * 2. Additional product information (specs, condition, etc.)
- * 3. Analysis metadata (version, retry count)
- * 4. Vector embeddings for similarity search
- */
-export interface AnalyzedListingDocument {
-  /**
-   * MongoDB document ObjectID
-   */
-  _id?: string | null;
-  parsed_listing_id: string | null;
-  original_listing_id: string;
-  type?: string | null;
-  brand?: string | null;
-  base_model?: string | null;
-  model_variant?: string | null;
-  info?: {
-    [k: string]: unknown;
-  };
-  embeddings?: number[] | null;
-  analysis_version: string;
-  retry_count?: number;
-  [k: string]: unknown;
-}
-/**
  * Schedule configuration for maintenance tasks.
  */
 export interface MaintenanceSchedule {
@@ -234,19 +225,6 @@ export interface MaintenanceSchedule {
   cleanup_old_logs?: boolean;
   vacuum_database?: boolean;
   update_indexes?: boolean;
-}
-/**
- * Response model for metrics endpoint.
- */
-export interface MetricsResponse {
-  timestamp: number;
-  system: SystemMetrics;
-}
-/**
- * Model for system uptime metrics.
- */
-export interface SystemMetrics {
-  uptime?: number;
 }
 /**
  * Document for storing model price statistics.

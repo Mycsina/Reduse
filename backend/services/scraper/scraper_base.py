@@ -5,7 +5,7 @@ from pathlib import Path
 from typing import Dict, List, Optional, Protocol, Type, runtime_checkable
 from urllib.parse import urlparse
 
-from ..schemas.listings import \
+from ...schemas.listings import \
     ListingDocument  # Adjust import based on actual location
 
 
@@ -24,9 +24,7 @@ class Scraper(Protocol):
         """Check if this scraper can handle the given URL"""
         ...
 
-    async def scrape(
-        self, url: str, already_scraped_ids: Optional[List[str]] = None
-    ) -> List[ListingDocument]:
+    async def scrape(self, url: str, already_scraped_ids: Optional[List[str]] = None) -> List[ListingDocument]:
         """Scrape the URL and return the results"""
         ...
 
@@ -59,14 +57,10 @@ class ScraperRegistry:
 
         for file_path in current_dir.glob("*.py"):
             module_name = file_path.stem
-            if (
-                module_name != "__init__" and module_name != Path(__file__).stem
-            ):  # Exclude __init__.py and self
+            if module_name != "__init__" and module_name != Path(__file__).stem:  # Exclude __init__.py and self
                 try:
                     # Import modules within the same directory
-                    module = importlib.import_module(
-                        f".{module_name}", package=__package__
-                    )
+                    module = importlib.import_module(f".{module_name}", package=__package__)
                     self._register_scrapers_from_module(module)
                 except Exception as e:
                     import traceback
@@ -82,9 +76,7 @@ class ScraperRegistry:
             if inspect.isclass(obj) and issubclass(obj, Scraper) and obj != Scraper:
                 # Use the class name as a default "name" for the scraper
                 self.register(obj.__name__, obj)
-                print(
-                    f"Registered scraper: {obj.__name__} from module {module.__name__}"
-                )
+                print(f"Registered scraper: {obj.__name__} from module {module.__name__}")
 
     def register(self, name: str, scraper_class: Type["Scraper"]) -> None:
         """Registers a scraper class."""

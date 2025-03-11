@@ -8,9 +8,9 @@ from urllib.parse import parse_qs, urlparse
 import httpx
 from beanie import Document
 
-from ..config import settings
-from ..schemas.listings import ListingDocument
-from ..utils.oauth import OAuthManager
+from ...config import settings
+from ...schemas.listings import ListingDocument
+from ...utils.oauth import OAuthManager
 from .scraper_base import Scraper
 
 
@@ -51,9 +51,7 @@ class EbayScraper(Scraper):
             if not self.client:
                 raise RuntimeError("Failed to create httpx client")
 
-    async def _api_request(
-        self, endpoint: str, params: Dict[str, Any]
-    ) -> Dict[str, Any]:
+    async def _api_request(self, endpoint: str, params: Dict[str, Any]) -> Dict[str, Any]:
         """Make an authenticated request to the eBay API."""
         await self._ensure_client()
         if not self.client:
@@ -67,9 +65,7 @@ class EbayScraper(Scraper):
             "X-EBAY-C-MARKETPLACE-ID": "EBAY_US",
         }
 
-        response = await self.client.get(
-            f"{self.base_url}{endpoint}", params=params, headers=headers
-        )
+        response = await self.client.get(f"{self.base_url}{endpoint}", params=params, headers=headers)
         if response.status_code != 200:
             raise Exception(f"API request failed: {response.text}")
         return response.json()
@@ -94,9 +90,7 @@ class EbayScraper(Scraper):
                 more=False,  # eBay API provides all needed info
             )
         except Exception as e:
-            self.logger.error(
-                f"Error parsing item {item.get('itemId', 'unknown')}: {str(e)}"
-            )
+            self.logger.error(f"Error parsing item {item.get('itemId', 'unknown')}: {str(e)}")
             raise
 
     def _extract_search_params(self, url: str) -> Dict[str, Any]:

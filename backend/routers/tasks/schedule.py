@@ -92,7 +92,7 @@ class JobListResponse(BaseModel):
     """Response model for job listing."""
 
     jobs: List[Dict[str, Any]]
-    
+
 
 def generate_job_id(prefix: str) -> str:
     """Generate a unique job ID with a meaningful prefix."""

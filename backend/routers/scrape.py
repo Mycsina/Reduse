@@ -10,7 +10,7 @@ from fastapi import (APIRouter, BackgroundTasks, Depends, Header,
 from pydantic import BaseModel, HttpUrl
 from sse_starlette.sse import EventSourceResponse
 
-from ..logic import analysis, scraping
+from ..logic import scraping
 from ..security import API_KEY, verify_api_key
 
 router = APIRouter(prefix="/scrape")
@@ -95,43 +95,13 @@ async def stream_logs(
     return EventSourceResponse(event_generator())
 
 
-@router.post("/olx", response_model=QueuedTaskResponse)
-async def parse_olx_categories(
-    background_tasks: BackgroundTasks, _: str = Depends(verify_api_key)
-):
-    """Parse all OLX categories and save listings without details."""
-    queue_id = str(id(background_tasks))
-    handler = LogHandler(queue_id)
-
-    # Add handler to root logger to capture all module logs
-    root_logger = logging.getLogger()
-    root_logger.addHandler(handler)
-
-    async def process_categories():
-        try:
-            logger.info("Starting OLX category parsing")
-            await send_progress(queue_id, "Scraping Categories", 0, 1)
-            await scraping.scrape_olx_categories()
-            await send_progress(queue_id, "Scraping Categories", 1, 1)
-            logger.info("Processing complete")
-        except Exception as e:
-            logger.error(f"Error: {str(e)}")
-        finally:
-            root_logger.removeHandler(handler)
-
-    background_tasks.add_task(process_categories)
-    return QueuedTaskResponse(
-        message="OLX category parsing started.", queue_id=queue_id
-    )
-
-
 @router.post("/", response_model=QueuedTaskResponse)
 async def scrape(
     request: ScrapeRequest,
     background_tasks: BackgroundTasks,
     _: str = Depends(verify_api_key),
 ):
-    """Scrape a URL and process the listings."""
+    """Scrape a URL for listings."""
     queue_id = str(id(background_tasks))
     handler = LogHandler(queue_id)
 
@@ -139,32 +109,29 @@ async def scrape(
     root_logger = logging.getLogger()
     root_logger.addHandler(handler)
 
-    async def process_pipeline(url: str):
+    url = str(request.url)
+    logger.info(f"Scrape request received for URL: {url}")
+
+    async def process_url():
         try:
-            # Step 1: Scrape listings
-            logger.info("Starting scraping phase")
             await send_progress(queue_id, "Scraping", 0, 1)
-            listings = await scraping.scrape_and_save(str(url))
+            logger.info(f"Starting scraping for {url}")
+
+            # Scrape and save listings
+            results = await scraping.scrape_and_save(url)
+
+            if results:
+                logger.info(f"Scraped {len(results)} listings from {url}")
+            else:
+                logger.warning(f"No listings found at {url}")
+
             await send_progress(queue_id, "Scraping", 1, 1)
+            logger.info("Scraping complete")
 
-            if not listings:
-                logger.info("No listings found to process")
-                return
-
-            # Step 2: Analyze listings
-            total = len(listings)
-            logger.info(f"Starting analysis of {total} listings")
-
-            for i, listing in enumerate(listings, 1):
-                await analysis.analyze_and_save([listing])
-                await send_progress(queue_id, "Analyzing", i, total)
-
-            logger.info("Processing complete")
         except Exception as e:
-            logger.error(f"Error: {str(e)}")
+            logger.error(f"Error scraping URL: {str(e)}")
         finally:
-            # Remove handler from root logger
             root_logger.removeHandler(handler)
 
-    background_tasks.add_task(process_pipeline, str(request.url))
-    return QueuedTaskResponse(message="Started processing", queue_id=queue_id)
+    background_tasks.add_task(process_url)
+    return QueuedTaskResponse(message="Scraping started", queue_id=queue_id)

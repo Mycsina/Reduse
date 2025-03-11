@@ -35,10 +35,13 @@ interface Function {
   path: string;
   name: string;
   module: string;
-  doc: string;
+  doc: string | null;
   is_async: boolean;
   parameters: Record<string, ParameterInfo>;
-  return_type: string;
+  return_type: string | null;
+  module_name: string;
+  function_name: string;
+  full_path: string;
 }
 
 // Add type parsing utilities
@@ -151,6 +154,7 @@ export default function RunFunction() {
   const [selectedFunction, setSelectedFunction] = useState<string>("");
   const [functionInfo, setFunctionInfo] = useState<Function | null>(null);
   const [isLoading, setIsLoading] = useState(false);
+  const [isLoadingFunctions, setIsLoadingFunctions] = useState(true);
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState("");
   const [parameters, setParameters] = useState<Record<string, any>>({});
@@ -185,9 +189,28 @@ export default function RunFunction() {
   }, [functionInfo]);
 
   const fetchFunctions = async () => {
+    setIsLoadingFunctions(true);
     try {
       const response = await apiClient.getAvailableFunctions();
-      setFunctions(response.functions);
+      // Map the API response to our component's Function type
+      const mappedFunctions = response.map(func => ({
+        ...func,
+        path: func.full_path,
+        name: func.function_name,
+        module: func.module_name,
+        // Convert parameters to the right format
+        parameters: Object.entries(func.parameters).reduce((acc, [key, value]) => {
+          const paramInfo = value as any;
+          acc[key] = {
+            required: paramInfo.required || false,
+            default: paramInfo.default,
+            type: paramInfo.type || 'string',
+            description: paramInfo.description
+          };
+          return acc;
+        }, {} as Record<string, ParameterInfo>)
+      }));
+      setFunctions(mappedFunctions);
     } catch (error) {
       toast({
         title: "Failed to fetch functions",
@@ -195,13 +218,34 @@ export default function RunFunction() {
           error instanceof Error ? error.message : "Unknown error occurred",
         variant: "destructive",
       });
+      setFunctions([]);
+    } finally {
+      setIsLoadingFunctions(false);
     }
   };
 
   const fetchFunctionInfo = async (path: string) => {
     try {
       const info = await apiClient.getFunctionInfo(path);
-      setFunctionInfo(info);
+      // Map the API response to our component's Function type
+      const mappedInfo = {
+        ...info,
+        path: info.full_path,
+        name: info.function_name,
+        module: info.module_name,
+        // Convert parameters to the right format
+        parameters: Object.entries(info.parameters).reduce((acc, [key, value]) => {
+          const paramInfo = value as any;
+          acc[key] = {
+            required: paramInfo.required || false,
+            default: paramInfo.default,
+            type: paramInfo.type || 'string',
+            description: paramInfo.description
+          };
+          return acc;
+        }, {} as Record<string, ParameterInfo>)
+      };
+      setFunctionInfo(mappedInfo);
     } catch (error) {
       toast({
         title: "Failed to fetch function info",
@@ -219,7 +263,7 @@ export default function RunFunction() {
     }));
   };
 
-  const filteredFunctions = functions.filter((func) => {
+  const filteredFunctions = !functions ? [] : functions.filter((func) => {
     if (!search) return true;
 
     // First check if all parameters are of basic types
@@ -271,11 +315,13 @@ export default function RunFunction() {
         parameters: parsedParameters,
       });
 
-      setJobId(response.job_id);
+      // According to the API type, it's queue_id not job_id
+      const generatedJobId = response.queue_id;
+      setJobId(generatedJobId);
 
       // Subscribe to logs
       const cleanup = apiClient.subscribeToJobLogs(
-        response.job_id,
+        generatedJobId,
         (log) => {
           try {
             const logData = JSON.parse(log);
@@ -284,7 +330,7 @@ export default function RunFunction() {
             // Check for completion message
             if (
               logData.message ===
-              `Job ${response.job_id} completed successfully`
+              `Job ${generatedJobId} completed successfully`
             ) {
               cleanup();
               setIsRunning(false);
@@ -470,11 +516,14 @@ export default function RunFunction() {
               role="combobox"
               aria-expanded={open}
               className="w-full justify-between"
+              disabled={isLoadingFunctions}
             >
-              {selectedFunction
-                ? functions.find((f) => f.path === selectedFunction)?.name ||
-                  "Select function"
-                : "Select function"}
+              {isLoadingFunctions 
+                ? "Loading functions..." 
+                : selectedFunction
+                  ? functions?.find((f) => f.path === selectedFunction)?.name ||
+                    "Select function"
+                  : "Select function"}
               <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
             </Button>
           </PopoverTrigger>
@@ -486,8 +535,12 @@ export default function RunFunction() {
                 onValueChange={setSearch}
               />
               <CommandList>
-                <CommandEmpty>No functions found.</CommandEmpty>
-                <CommandGroup>
+                <CommandEmpty>
+                  {isLoadingFunctions 
+                    ? "Loading functions..." 
+                    : "No functions found."}
+                </CommandEmpty>
+                <CommandGroup key="functions-group">
                   {filteredFunctions.map((func) => (
                     <CommandItem
                       key={func.path}

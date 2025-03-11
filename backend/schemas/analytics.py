@@ -1,6 +1,6 @@
 from datetime import datetime
 from decimal import Decimal
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 from beanie import Document
 from bson import Decimal128
@@ -92,6 +92,27 @@ class ModelPriceStats(Document):
                 ("timestamp", -1),
             ],  # Compound index for efficient querying
             [("timestamp", -1)],  # Index for sorting by timestamp
+        ]
+
+
+class FieldValueStats(Document):
+    """Document for storing statistics about field values."""
+
+    field_name: str  # Name of the field
+    value_type: str  # Type of the values: numeric, categorical, boolean, mixed, unknown
+    common_values: List[Tuple[str, int]]  # List of (value, count) tuples
+    total_occurrences: int  # Total number of occurrences of this field
+    distinct_values: int  # Number of distinct values for this field
+    timestamp: datetime = Field(default_factory=datetime.utcnow)
+    last_updated: datetime = Field(default_factory=datetime.utcnow)
+
+    class Settings:
+        name = "field_value_stats"
+        indexes = [
+            [("field_name", 1)],  # For finding statistics for a specific field
+            [("value_type", 1)],  # For grouping fields by type
+            [("total_occurrences", -1)],  # For sorting by popularity
+            [("last_updated", -1)],  # For finding recently updated stats
         ]
 
 

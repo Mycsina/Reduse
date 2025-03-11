@@ -7,11 +7,10 @@ from typing import Dict, List, Optional
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
-
 from ...logic import query as query_logic
 from ...schemas.analysis import AnalyzedListingDocument
-from ...schemas.listings import ListingDocument
 from ...schemas.filtering import ListingQuery
+from ...schemas.listings import ListingDocument
 
 logger = logging.getLogger(__name__)
 
@@ -30,7 +29,7 @@ class NaturalLanguageQueryRequest(BaseModel):
 
 
 class InfoFieldsResponse(BaseModel):
-    
+
     main_fields: List[str]
     info_fields: List[str]
 

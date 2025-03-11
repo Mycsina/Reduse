@@ -7,7 +7,7 @@ from typing import Any, Dict, Optional, Type
 logger = logging.getLogger(__name__)
 
 
-class VroomError(Exception):
+class ReduseError(Exception):
     """Base exception class for all application errors."""
 
     def __init__(
@@ -56,7 +56,7 @@ class VroomError(Exception):
 
 
 # Database Errors
-class DatabaseError(VroomError):
+class DatabaseError(ReduseError):
     """Base class for database-related errors."""
 
     pass
@@ -93,7 +93,7 @@ class DocumentNotFoundError(DatabaseError):
 
 
 # AI Provider Errors
-class AIProviderError(VroomError):
+class AIProviderError(ReduseError):
     """Base class for AI provider errors."""
 
     pass
@@ -111,9 +111,8 @@ class RateLimitError(AIProviderError):
         """
         message = f"Rate limit exceeded for provider {provider}"
         details = {"provider": provider}
-
         if retry_after is not None:
-            details["retry_after"] = retry_after
+            details["retry_after"] = str(retry_after)
 
         super().__init__(message=message, status_code=429, details=details)
 
@@ -125,7 +124,7 @@ class ProviderResponseError(AIProviderError):
 
 
 # Scraper Errors
-class ScraperError(VroomError):
+class ScraperError(ReduseError):
     """Base class for scraper errors."""
 
     pass
@@ -144,7 +143,7 @@ class ParseError(ScraperError):
 
 
 # Validation Errors
-class ValidationError(VroomError):
+class ValidationError(ReduseError):
     """Base class for validation errors."""
 
     def __init__(self, field: str, message: str):
@@ -159,8 +158,8 @@ class ValidationError(VroomError):
 
 # Function to convert standard exceptions to application exceptions
 def convert_exception(
-    exception: Exception, default_error_class: Type[VroomError] = VroomError
-) -> VroomError:
+    exception: Exception, default_error_class: Type[ReduseError] = ReduseError
+) -> ReduseError:
     """Convert a standard exception to an application exception.
 
     Args:
@@ -168,9 +167,9 @@ def convert_exception(
         default_error_class: Default error class to use
 
     Returns:
-        VroomError: Application-specific error
+        ReduseError: Application-specific error
     """
-    if isinstance(exception, VroomError):
+    if isinstance(exception, ReduseError):
         return exception
 
     message = str(exception)

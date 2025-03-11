@@ -3,7 +3,17 @@
 from typing import Annotated, Any, Dict, List
 
 from beanie import Document, Indexed, PydanticObjectId
+from pydantic import BaseModel
 from pymongo import GEOSPHERE
+
+
+class AnalysisStats(BaseModel):
+    total: int
+    completed: int
+    pending: int
+    failed: int
+    in_progress: int
+    max_retries_reached: int
 
 
 class AnalyzedListingDocument(Document):
