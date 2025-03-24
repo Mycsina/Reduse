@@ -12,48 +12,35 @@ from google.api_core import exceptions
 from tqdm import tqdm
 
 from ...config import settings
-from .base import BaseProvider, ProviderError, RateLimitError
+from ...utils.errors import ProviderError, RateLimitError
+from .base import BaseProvider
 
 
 class GoogleAIProvider(BaseProvider):
     """Provider for Google's Generative AI API (including Gemini)."""
 
-    def __init__(self):
-        """Initialize the Google AI provider."""
-        super().__init__()
+    def __init__(self, default_model: Optional[str] = None):
+        """Initialize the Google AI provider.
+
+        Args:
+            default_model: The default model to use for text generation. If None, uses the configured default.
+        """
+        super().__init__(default_model=default_model)
         genai.configure(api_key=settings.ai.google_api_key.get_secret_value())
-        self._models = {}  # Cache for initialized models
         self._dimensions = 768  # Using models/text-embedding-004 model
+        self._default_model = default_model or settings.ai.default_model
         self.logger = logging.getLogger(__name__)
-
-    def _get_model(self, model: str, temperature: float, max_tokens: Optional[int]) -> genai.GenerativeModel:
-        """Get or create a model instance with the specified parameters."""
-        key = (model, temperature, max_tokens)
-        if key not in self._models:
-            config = {
-                "temperature": temperature,
-                "top_p": 0.95,
-                "top_k": 40,
-            }
-            if max_tokens:
-                config["max_output_tokens"] = max_tokens
-
-            self._models[key] = genai.GenerativeModel(
-                model_name=model,
-                generation_config=genai.types.GenerationConfig(**config),
-            )
-        return self._models[key]
 
     async def generate_text(
         self,
         prompt: str,
-        model: str,
         temperature: float = 0.7,
         max_tokens: Optional[int] = None,
     ) -> str:
         """Generate text from the model."""
+        generate_config = genai.types.GenerationConfig(temperature=temperature, max_output_tokens=max_tokens)
         try:
-            model_instance = self._get_model(model, temperature, max_tokens)
+            model_instance = genai.GenerativeModel(model_name=self._default_model, generation_config=generate_config)
             response = await model_instance.generate_content_async(prompt)
 
             if not response.text:
@@ -71,7 +58,6 @@ class GoogleAIProvider(BaseProvider):
     async def generate_json(
         self,
         prompt: str,
-        model: str,
         temperature: float = 0.1,
         max_tokens: Optional[int] = None,
     ) -> Dict[str, Any]:
@@ -82,10 +68,10 @@ Do not include any explanatory text, markdown formatting, or code blocks.
 The response should be parseable by json.loads().
 
 {prompt}"""
-
+        generate_config = genai.types.GenerationConfig(temperature=temperature, max_output_tokens=max_tokens)
         try:
             # Get response from model
-            model_instance = self._get_model(model, temperature, max_tokens)
+            model_instance = genai.GenerativeModel(model_name=self._default_model, generation_config=generate_config)
             response = await model_instance.generate_content_async(json_prompt)
 
             if not response.text:

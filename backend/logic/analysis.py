@@ -6,21 +6,18 @@ from typing import Any, Dict, List, Optional
 
 from tqdm import tqdm
 
-from ..ai.base import AIModel
-from ..ai.providers.google import GoogleAIProvider
-from ..config import settings
+from ..ai.providers.factory import create_provider
+from ..config import PROVIDER_TYPE, settings
 from ..schemas.analysis import AnalysisStats, AnalyzedListingDocument
 from ..schemas.listings import AnalysisStatus, ListingDocument
-from ..services.analysis import AnalysisService
+from ..services.analysis import (_generate_listing_embeddings, analyze_batch,
+                                 bulk_create_analyses, get_listings_by_status,
+                                 get_status_counts)
+from ..services.query import get_distinct_info_fields
 
 # Get logger but don't configure it (configuration is done in logging_config.py)
 logger = logging.getLogger(__name__)
-
-# Initialize AI model with Google provider
-model = AIModel.from_provider(GoogleAIProvider)
-
-# Initialize service with the model
-analysis_service = AnalysisService(model)
+provider = create_provider(PROVIDER_TYPE.GROQ, model="llama-3.2-3b-preview")
 
 
 async def analyze_listing(
@@ -28,12 +25,15 @@ async def analyze_listing(
 ) -> Optional[AnalyzedListingDocument]:
     """Analyze a listing using the AI model."""
     try:
+        # Get existing fields from the database
+        existing_fields = await get_distinct_info_fields()
+
         result = []
-        async for analyzed in analysis_service.analyze_batch([listing]):
+        async for analyzed in analyze_batch([listing], existing_fields=existing_fields):
             result.append(analyzed)
         if result:
             await change_state([listing], AnalysisStatus.COMPLETED)
-            await analysis_service.bulk_create_analyses(result)
+            await bulk_create_analyses(result)
             return result[0]
         return None
     except Exception as e:
@@ -43,14 +43,18 @@ async def analyze_listing(
 
 async def analyze_new_listings() -> None:
     """Analyze pending listings."""
-    pending = await analysis_service.get_pending_listings()
+    pending = await get_listings_by_status(AnalysisStatus.PENDING)
     if not pending:
         logger.info("No pending listings found")
         return
 
     logger.info(f"Found {len(pending)} unfinished listings")
 
-    await analyze_and_save(pending)
+    # Get existing fields once for all listings
+    existing_fields = await get_distinct_info_fields()
+    logger.info(f"Found {len(existing_fields)} existing fields to consider")
+
+    await analyze_and_save(pending, existing_fields=existing_fields)
 
     logger.info(f"Analysis complete: {len(pending)} listings processed")
 
@@ -59,7 +63,7 @@ async def retry_failed_analyses() -> None:
     """Retry failed analyses."""
     try:
         logger.info("Retrying failed analyses")
-        failed_listings = await analysis_service.get_failed_listings()
+        failed_listings = await get_listings_by_status(AnalysisStatus.FAILED)
 
         if not failed_listings:
             logger.info("No failed listings found")
@@ -67,7 +71,11 @@ async def retry_failed_analyses() -> None:
 
         logger.info(f"Found {len(failed_listings)} failed listings")
 
-        await analyze_and_save(failed_listings)
+        # Get existing fields once for all listings
+        existing_fields = await get_distinct_info_fields()
+        logger.info(f"Found {len(existing_fields)} existing fields to consider")
+
+        await analyze_and_save(failed_listings, existing_fields=existing_fields)
 
         logger.info(f"Analysis complete: {len(failed_listings)} listings processed")
 
@@ -79,14 +87,16 @@ async def retry_failed_analyses() -> None:
 
 async def reanalyze_listings() -> None:
     """Reanalyze all listings."""
-    listings = await analysis_service.get_all_listings()
-    await analyze_and_save(listings)
+    listings = await get_listings_by_status(AnalysisStatus.COMPLETED)
+    existing_fields = await get_distinct_info_fields()
+    await analyze_and_save(listings, existing_fields=existing_fields)
 
 
 async def resume_analysis() -> None:
     """Resume analysis of in progress listings."""
-    in_progress = await analysis_service.get_in_progress_listings()
-    await analyze_and_save(in_progress)
+    in_progress = await get_listings_by_status(AnalysisStatus.IN_PROGRESS)
+    existing_fields = await get_distinct_info_fields()
+    await analyze_and_save(in_progress, existing_fields=existing_fields)
 
 
 async def get_analysis_status() -> AnalysisStats:
@@ -97,7 +107,7 @@ async def get_analysis_status() -> AnalysisStats:
     """
     try:
         # Get status counts from service
-        status_counts = await analysis_service.get_status_counts()
+        status_counts = await get_status_counts()
 
         # Calculate derived statistics
         total = sum(status_counts.values())
@@ -108,8 +118,8 @@ async def get_analysis_status() -> AnalysisStats:
 
         # Get max retries count
         max_retries = await ListingDocument.find(
-            {"retry_count": {"$gte": settings.ai.rate_limits["max_retries"]}}
-        ).count()
+            {"retry_count": {"$gte": 3}}
+        ).count()  # Default to 3 retries
 
         return AnalysisStats(
             total=total,
@@ -142,27 +152,29 @@ async def change_state(listings: List[ListingDocument], status: AnalysisStatus) 
     )
 
 
-async def analyze_and_save(listings: List[ListingDocument]) -> None:
+async def analyze_and_save(
+    listings: List[ListingDocument], existing_fields: Optional[List[str]] = None
+) -> None:
     """Analyze and save listings."""
     # Collect results as they come in
     logger.debug(f"Analyzing {len(listings)} listings")
     originals = []
     analysis_results = []
-    async for original, analyzed in analysis_service.analyze_batch(
-        listings, batch_size=10
+    async for original, analyzed in analyze_batch(
+        listings, batch_size=10, existing_fields=existing_fields
     ):
         originals.append(original)
         analysis_results.append(analyzed)
         if len(analysis_results) >= 10:  # Save in chunks to avoid memory buildup
             logger.debug(f"Saving {len(analysis_results)} analyzed listings")
             await change_state(originals, AnalysisStatus.COMPLETED)
-            await analysis_service.bulk_create_analyses(analysis_results)
-            original = []
+            await bulk_create_analyses(analysis_results)
+            originals = []
             analysis_results = []
 
     # Save any remaining results
     if analysis_results:
-        await analysis_service.bulk_create_analyses(analysis_results)
+        await bulk_create_analyses(analysis_results)
 
 
 async def cancel_in_progress() -> int:
@@ -173,7 +185,7 @@ async def cancel_in_progress() -> int:
     """
     try:
         # Get all in-progress listings
-        in_progress = await analysis_service.get_in_progress_listings()
+        in_progress = await get_listings_by_status(AnalysisStatus.IN_PROGRESS)
         if not in_progress:
             return 0
 
@@ -238,9 +250,7 @@ async def regenerate_embeddings() -> Dict[str, Any]:
                         "model": analysis_doc.model,
                         **analysis_doc.info,
                     }
-                    embeddings = await analysis_service._generate_listing_embeddings(
-                        info, listing
-                    )
+                    embeddings = await _generate_listing_embeddings(info, listing)
 
                     # Update the document with new embeddings
                     analysis_doc.embeddings = embeddings
@@ -264,7 +274,7 @@ async def regenerate_embeddings() -> Dict[str, Any]:
             "message": f"Successfully regenerated embeddings for {updated} analyses",
             "total": len(completed_analyses),
             "updated": updated,
-            "dimensions": model.provider.get_dimensions(),
+            "dimensions": provider.get_dimensions(),
         }
 
     except Exception as e:

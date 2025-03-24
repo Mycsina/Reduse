@@ -14,6 +14,7 @@ class AnalysisStats(BaseModel):
     failed: int
     in_progress: int
     max_retries_reached: int
+    can_process: bool = True  # Default to True to allow processing
 
 
 class AnalyzedListingDocument(Document):

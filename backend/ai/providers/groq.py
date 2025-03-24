@@ -8,21 +8,23 @@ from groq import AsyncGroq
 from groq.types.chat import ChatCompletion
 from httpx import HTTPStatusError
 
-from .base import BaseProvider, ProviderError, RateLimitError
+from ...utils.errors import ProviderError, RateLimitError
+from .base import BaseProvider
 
 
 class GroqProvider(BaseProvider):
     """Groq AI implementation."""
 
-    def __init__(self, api_key: str):
+    def __init__(self, api_key: str, default_model: Optional[str] = None):
         """Initialize the Groq provider.
 
         Args:
             api_key: Groq API key
+            default_model: The default model to use for text generation. If None, uses the configured default.
         """
-        super().__init__()
+        super().__init__(default_model=default_model)
         self.client = AsyncGroq(api_key=api_key)
-        self.model = "llama-3.1-8b-instant"
+        self.model = default_model or "llama-3.1-8b-instant"
         self._dimensions = 768  # Same as Gemini for compatibility
         self.logger = logging.getLogger(__name__)
 
@@ -57,38 +59,46 @@ class GroqProvider(BaseProvider):
     async def generate_json(
         self,
         prompt: str,
-        model: str,
-        temperature: float = 0.1,
+        temperature: float = 0.7,
         max_tokens: Optional[int] = None,
     ) -> Dict[str, Any]:
-        """Generate a JSON response using Groq's models."""
+        """Generate JSON from the model.
+
+        Args:
+            prompt: The input prompt
+            temperature: Sampling temperature
+            max_tokens: Maximum tokens to generate
+
+        Returns:
+            Generated JSON object
+        """
+        json_prompt = f"""You must respond with a valid JSON object only.
+Do not include any explanatory text, markdown formatting, or code blocks.
+The response should be parseable by json.loads().
+
+{prompt}"""
         try:
             response: ChatCompletion = await self.client.chat.completions.create(
-                model=model,
-                messages=[
-                    {
-                        "role": "system",
-                        "content": "You are a JSON-only response generator. Always respond with valid JSON.",
-                    },
-                    {"role": "user", "content": prompt},
-                ],
+                model=self.model,
+                messages=[{"role": "user", "content": json_prompt}],
                 temperature=temperature,
                 max_tokens=max_tokens,
-                response_format={"type": "json_object"},  # Ensure JSON response
             )
 
             if not response.choices or not response.choices[0].message.content:
                 raise ProviderError("Empty response from model")
 
-            return json.loads(response.choices[0].message.content)
+            # Parse the JSON response
+            try:
+                return json.loads(response.choices[0].message.content)
+            except json.JSONDecodeError as e:
+                raise ProviderError(f"Failed to parse JSON response: {str(e)}")
 
         except HTTPStatusError as e:
             if e.response.status_code == 429:
                 retry_after = float(e.response.headers.get("retry-after", "60"))
                 raise RateLimitError("Rate limit exceeded", retry_after=retry_after)
             raise ProviderError(f"HTTP error: {str(e)}") from e
-        except json.JSONDecodeError as e:
-            raise ProviderError(f"Invalid JSON response: {e}")
         except Exception as e:
             raise ProviderError(f"Groq error: {str(e)}") from e
 
@@ -106,8 +116,7 @@ class GroqProvider(BaseProvider):
             A list of zero vectors with the same dimensions as Gemini embeddings
         """
         # Convert single text to list for uniform processing
-        texts = [text] if isinstance(text, str) else text
-        return [[0.0] * self.get_dimensions()] * len(texts)
+        raise NotImplementedError("Groq does not support embeddings")
 
     def get_dimensions(self) -> int:
         """Get the dimensionality of the embeddings vectors.
@@ -115,4 +124,4 @@ class GroqProvider(BaseProvider):
         Returns:
             Number of dimensions (768 for compatibility with Gemini)
         """
-        return self._dimensions
+        raise NotImplementedError("Groq does not support embeddings")

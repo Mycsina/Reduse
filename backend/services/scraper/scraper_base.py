@@ -5,8 +5,7 @@ from pathlib import Path
 from typing import Dict, List, Optional, Protocol, Type, runtime_checkable
 from urllib.parse import urlparse
 
-from ...schemas.listings import \
-    ListingDocument  # Adjust import based on actual location
+from ...schemas.listings import ListingDocument  # Adjust import based on actual location
 
 
 class ScraperError(Exception):

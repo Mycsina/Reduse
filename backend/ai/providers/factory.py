@@ -7,17 +7,18 @@ from typing import Optional
 
 from ...config import PROVIDER_TYPE, settings
 from .base import BaseProvider
-from .composite import CompositeProvider
 from .google import GoogleAIProvider
 from .groq import GroqProvider
 
 
-def create_provider(provider_type: Optional[PROVIDER_TYPE] = None) -> BaseProvider:
+def create_provider(provider_type: Optional[PROVIDER_TYPE] = None, model: Optional[str] = None) -> BaseProvider:
     """Create a provider instance based on the specified type.
 
     Args:
         provider_type: The type of provider to create.
                         If None, falls back to the configured default.
+        model: The default model to use for the provider.
+               If None, uses the provider's default model.
 
     Returns:
         An instance of the specified provider type
@@ -35,8 +36,6 @@ def create_provider(provider_type: Optional[PROVIDER_TYPE] = None) -> BaseProvid
     logger.debug(f"Creating provider: {provider_type}")
 
     if provider_type == PROVIDER_TYPE.GOOGLE:
-        return GoogleAIProvider()
+        return GoogleAIProvider(default_model=model)
     elif provider_type == PROVIDER_TYPE.GROQ:
-        return GroqProvider(api_key=settings.ai.groq_api_key.get_secret_value())
-    elif provider_type == PROVIDER_TYPE.COMPOSITE:
-        return CompositeProvider()
+        return GroqProvider(api_key=settings.ai.groq_api_key.get_secret_value(), default_model=model)

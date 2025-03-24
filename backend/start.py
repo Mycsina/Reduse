@@ -14,9 +14,7 @@ from .routers.query import router as query_router
 from .routers.scrape import router as scrape_router
 from .routers.tasks import router as tasks_router
 from .tasks.scheduler import start_scheduler
-from .utils.logging_config import (EndpointLoggingRoute,
-                                   RequestLoggingMiddleware,
-                                   setup_endpoint_logging, setup_logging)
+from .utils.logging_config import EndpointLoggingRoute, RequestLoggingMiddleware, setup_endpoint_logging, setup_logging
 
 # Initialize logger
 logger = logging.getLogger(__name__)

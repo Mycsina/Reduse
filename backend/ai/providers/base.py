@@ -2,35 +2,31 @@
 
 import logging
 from abc import ABC, abstractmethod
-from typing import Any, Dict, List, Optional, Union
-
-
-class ProviderError(Exception):
-    """Base exception for provider errors."""
-
-    pass
-
-
-class RateLimitError(ProviderError):
-    """Raised when provider returns a rate limit response."""
-
-    def __init__(self, message: str, retry_after: Optional[float] = None):
-        super().__init__(message)
-        self.retry_after = retry_after
+from typing import Any, Dict, List, Optional
 
 
 class BaseProvider(ABC):
     """Base class for AI providers."""
 
-    def __init__(self):
-        """Initialize the provider."""
+    def __init__(self, default_model: Optional[str] = None):
+        """Initialize the provider.
+
+        Args:
+            default_model: The default model to use for text generation. If None, uses the configured default.
+        """
         self.logger = logging.getLogger(__name__)
+        self._default_model = default_model
+
+    @property
+    def default_model(self) -> Optional[str]:
+        """Get the default model for this provider."""
+        return self._default_model
 
     @abstractmethod
     async def generate_text(
         self,
         prompt: str,
-        temperature: float = 0.7,
+        temperature: float = 1.0,
         max_tokens: Optional[int] = None,
     ) -> str:
         """Generate text from the model.
@@ -73,7 +69,7 @@ class BaseProvider(ABC):
         pass
 
     @abstractmethod
-    async def get_embeddings(self, text: Union[str, List[str]]) -> List[List[float]]:
+    async def get_embeddings(self, text: List[str]) -> List[List[float]]:
         """Get embeddings for a text or list of texts.
 
         Args:
@@ -81,7 +77,6 @@ class BaseProvider(ABC):
 
         Returns:
             A list of embeddings vectors, where each vector is a list of floats.
-            If a single text was provided, returns a list with one vector.
             If a list of texts was provided, returns a list with one vector per text.
 
         Raises:

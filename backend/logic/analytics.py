@@ -1,21 +1,17 @@
 """Analytics logic for listings."""
 
-import json
 import logging
+import re
 import time
-from collections import Counter, defaultdict
-from datetime import datetime, timedelta
-from functools import lru_cache
-from typing import Any, Dict, List, Optional, Set, Tuple
+from typing import Any, Dict, List, Optional, Set, Tuple, Union
 
 import numpy as np
-from sklearn.cluster import DBSCAN
 from sklearn.metrics.pairwise import cosine_similarity
 
 from ..ai.providers.factory import create_provider
-from ..ai.providers.google import GoogleAIProvider
-from ..logic.query import get_distinct_info_fields
-from ..schemas.analytics import FieldMapping, FieldValueStats, ModelPriceStats
+from ..config import PROVIDER_TYPE
+from ..schemas.analysis import AnalyzedListingDocument
+from ..schemas.analytics import FieldMapping, ModelPriceStats
 from ..services.analytics import (apply_field_mapping,
                                   create_new_field_mapping,
                                   get_active_field_mapping,
@@ -23,20 +19,72 @@ from ..services.analytics import (apply_field_mapping,
                                   get_model_price_history,
                                   preview_field_mapping_reversion,
                                   revert_field_mappings)
-from ..services.query import get_info_field_values
+from ..services.query import get_distinct_info_fields, get_info_field_values
 
 logger = logging.getLogger(__name__)
 
 # Initialize AI provider for embeddings
-provider = GoogleAIProvider()
-llm_provider = create_provider()
+embeddings_provider = create_provider(PROVIDER_TYPE.GOOGLE)
+llm_provider = create_provider(PROVIDER_TYPE.GROQ, model="llama-3.2-1b-preview")
 
 # Cache configuration
-CACHE_TTL_SECONDS = 3600  # 1 hour cache for field values
 PROTECTED_FIELDS = {"type", "brand", "base_model", "model_variant"}
 MIN_OCCURRENCE_THRESHOLD = (
     5  # Minimum number of occurrences for a field to be considered common
 )
+
+
+async def _get_most_common_values_cached(
+    field_names_tuple: Tuple[str, ...], limit: int = 10
+) -> Dict[str, List[Tuple[str, int]]]:
+    """Internal cached function to get the most common values for fields.
+
+    Args:
+        field_names_tuple: Tuple of field names to get values for
+        limit: Maximum number of values to return per field
+
+    Returns:
+        Dictionary mapping field names to lists of (value, count) tuples
+    """
+    try:
+        # Convert tuple back to list for the actual query
+        field_names = list(field_names_tuple)
+        # Get fresh values for all fields at once
+        return await get_info_field_values(field_names, limit)
+    except Exception as e:
+        logger.error(f"Error getting values for fields {field_names_tuple}: {str(e)}")
+        # Return empty results for failed fields
+        return {field: [] for field in field_names_tuple}
+
+
+async def get_most_common_values(
+    field_names: Union[str, List[str]], limit: int = 10
+) -> Union[List[Tuple[str, int]], Dict[str, List[Tuple[str, int]]]]:
+    """Get the most common values for one or more fields.
+
+    Args:
+        field_names: Single field name or list of field names to get values for
+        limit: Maximum number of values to return per field
+
+    Returns:
+        If field_names is a string: List of (value, count) tuples
+        If field_names is a list: Dictionary mapping field names to lists of (value, count) tuples
+    """
+    # Convert single field name to list for consistent processing
+    if isinstance(field_names, str):
+        field_names = [field_names]
+        single_field = True
+    else:
+        single_field = False
+
+    # Convert list to tuple for caching
+    field_names_tuple = tuple(field_names)
+    result = await _get_most_common_values_cached(field_names_tuple, limit)
+
+    # Return appropriate format based on input type
+    if single_field:
+        return result.get(field_names[0], [])
+    return result
 
 
 async def get_price_history(base_model: str, days: int = 30) -> List[ModelPriceStats]:
@@ -52,374 +100,165 @@ async def get_price_history(base_model: str, days: int = 30) -> List[ModelPriceS
     return await get_model_price_history(base_model, days)
 
 
-@lru_cache(maxsize=100)
-def cached_get_field_values(field_name: str, limit: int = 10) -> List[Tuple[str, int]]:
-    """Cached wrapper for getting common field values.
-    This function will be called by the async version with actual DB access.
-
-    Args:
-        field_name: Name of the field to get values for
-        limit: Maximum number of values to return
-
-    Returns:
-        List of (value, count) tuples
-    """
-    # This is just a placeholder - the actual value will come from the async function
-    # but we need this for the LRU cache decorator to work
-    return []
-
-
-async def get_most_common_values(
-    field_name: str, limit: int = 10
-) -> List[Tuple[str, int]]:
-    """Get the most common values for a specific field.
-
-    Args:
-        field_name: Name of the field to get values for
-        limit: Maximum number of values to return
-
-    Returns:
-        List of (value, count) tuples
-    """
-    cache_key = f"{field_name}:{limit}"
-    cached_result = cached_get_field_values(field_name, limit)
-
-    if cached_result:
-        logger.debug(f"Using cached values for field {field_name}")
-        return cached_result
-
-    values = await get_info_field_values(field_name, limit)
-
-    # Update cache
-    cached_get_field_values.__wrapped__.__cache__[cache_key] = values
-    return values
-
-
-def detect_value_type(values: List[Tuple[str, int]]) -> str:
-    """Detect the type of values in a field based on sample values.
+def detect_value_pattern(values: List[Tuple[str, int]]) -> Dict[str, Any]:
+    """Detect patterns in field values to help determine if fields should be fused.
 
     Args:
         values: List of (value, count) tuples
 
     Returns:
-        String describing the value type: "numeric", "categorical", "boolean", or "mixed"
+        Dict containing pattern information:
+        - type: "numeric", "categorical", "boolean", "unknown"
+        - patterns: List of detected patterns
+        - unit: Optional unit suffix if numeric
+        - stats: Optional statistics for numeric values
     """
     if not values:
-        return "unknown"
+        return {"type": "unknown", "patterns": [], "unit": None, "stats": None}
 
-    # Check sample values
-    sample_values = [v[0] for v in values]
+    # Get all values and their total count
+    all_values = []
+    total_count = 0
+    for value, count in values:
+        all_values.append(value)
+        total_count += count
 
-    # Check for boolean values
-    if all(
-        val.lower() in ("true", "false", "yes", "no", "0", "1") for val in sample_values
-    ):
-        return "boolean"
+    # Try to detect numeric values with units
+    numeric_pattern = re.compile(r"^([\d,.]+)\s*([a-zA-Z%]+)$")
+    numeric_values = []
+    unit = None
 
-    # Check for numeric values
-    numeric_count = 0
-    for val in sample_values:
-        try:
-            float(val)
-            numeric_count += 1
-        except (ValueError, TypeError):
-            pass
-
-    # Determine type based on proportion of numeric values
-    if numeric_count == len(sample_values):
-        return "numeric"
-    elif numeric_count > 0:
-        return "mixed"
-    else:
-        return "categorical"
-
-
-async def calculate_field_similarity_with_context(
-    field_names: List[str],
-    embeddings: List[List[float]],
-    similarity_threshold: float = 0.8,
-) -> Tuple[Dict[str, str], Dict[str, Any]]:
-    """Enhanced version of calculate_field_similarity that uses DBSCAN clustering
-    and field value context for better grouping.
-
-    Args:
-        field_names: List of field names to process
-        embeddings: List of embeddings for each field name
-        similarity_threshold: Base threshold for considering fields similar
-
-    Returns:
-        Tuple of (field_mapping, field_metadata)
-    """
-    # Convert embeddings to numpy array
-    embeddings_array = np.array(embeddings)
-
-    # Calculate similarity matrix
-    similarity_matrix = cosine_similarity(embeddings_array)
-
-    # Use DBSCAN to find clusters (set eps to 1-similarity_threshold for clustering)
-    eps = 1.0 - similarity_threshold
-    clustering = DBSCAN(eps=eps, min_samples=1, metric="precomputed").fit(
-        1 - similarity_matrix
-    )
-
-    # Group fields by cluster
-    clusters = defaultdict(list)
-    for i, cluster_id in enumerate(clustering.labels_):
-        clusters[cluster_id].append(i)
-
-    # Store field metadata
-    field_metadata = {}
-    field_mapping = {}
-    processed = set()
-
-    # Process each cluster and collect value context
-    for cluster_id, indices in clusters.items():
-        if len(indices) <= 1:
-            # Single field cluster, no need for mapping
-            field = field_names[indices[0]]
-            field_mapping[field] = field
-            processed.add(field)
-            continue
-
-        # Get fields in this cluster
-        cluster_fields = [field_names[i] for i in indices]
-        logger.debug(f"Cluster {cluster_id}: {cluster_fields}")
-
-        # Collect value context for ambiguous clusters
-        ambiguous_cluster = False
-        field_contexts = {}
-
-        # Fields that need context for disambiguation
-        for field in cluster_fields:
-            # Skip if already processed (shouldn't happen with DBSCAN)
-            if field in processed:
+    for value in all_values:
+        match = numeric_pattern.match(value)
+        if match:
+            try:
+                num = float(match.group(1).replace(",", ""))
+                numeric_values.append(num)
+                if not unit:
+                    unit = match.group(2)
+            except ValueError:
                 continue
 
-            # Get sample values for this field
-            try:
-                common_values = await get_most_common_values(field)
-                value_type = detect_value_type(common_values)
-
-                field_contexts[field] = {
-                    "common_values": common_values,
-                    "value_type": value_type,
-                    "occurrence_count": sum(count for _, count in common_values),
-                }
-
-                # Flag for potential LLM review if we have different value types in the cluster
-                if any(
-                    ctx["value_type"] != value_type
-                    for f, ctx in field_contexts.items()
-                    if f != field and f in cluster_fields
-                ):
-                    ambiguous_cluster = True
-            except Exception as e:
-                logger.error(f"Error getting values for {field}: {str(e)}")
-                field_contexts[field] = {
-                    "common_values": [],
-                    "value_type": "unknown",
-                    "occurrence_count": 0,
-                }
-
-        # For ambiguous clusters, use LLM to determine canonical field
-        canonical_field = None
-        if ambiguous_cluster:
-            # Use LLM to determine canonical field name
-            canonical_field = await select_canonical_field_with_llm(
-                cluster_fields, field_contexts
-            )
-
-        # If LLM didn't help or wasn't needed, use heuristics
-        if not canonical_field:
-            # Choose canonical field based on occurrence count first, then length
-            candidates = sorted(
-                [
-                    (field, field_contexts.get(field, {}).get("occurrence_count", 0))
-                    for field in cluster_fields
-                ],
-                key=lambda x: (
-                    -x[1],
-                    len(x[0]),
-                ),  # Sort by -count (desc), then length (asc)
-            )
-            canonical_field = candidates[0][0]
-
-        # Store mapping
-        for field in cluster_fields:
-            field_mapping[field] = canonical_field
-            processed.add(field)
-
-        # Store metadata for reporting
-        field_metadata[canonical_field] = {
-            "similar_fields": cluster_fields,
-            "contexts": field_contexts,
+    if numeric_values:
+        return {
+            "type": "numeric",
+            "patterns": ["numeric_with_unit"],
+            "unit": unit,
+            "stats": {
+                "min": min(numeric_values),
+                "max": max(numeric_values),
+                "avg": sum(numeric_values) / len(numeric_values),
+            },
         }
 
-    return field_mapping, field_metadata
-
-
-async def select_canonical_field_with_llm(
-    fields: List[str], contexts: Dict[str, Any]
-) -> Optional[str]:
-    """Use LLM to select the best canonical field name from a set of similar fields.
-
-    Args:
-        fields: List of field names
-        contexts: Dictionary of field contexts with value samples
-
-    Returns:
-        Selected canonical field name or None if LLM fails
-    """
-    try:
-        # Prepare prompt with field names and sample values
-        prompt = """
-        I need to select the most appropriate canonical field name from these similar fields.
-        For each field, I'll provide the name and some sample values.
-        
-        Please select the single best name that:
-        1. Is the most standard/conventional terminology
-        2. Most clearly represents the semantic meaning
-        3. Is specific enough but not overly verbose
-        4. Uses consistent casing (prefer snake_case)
-        
-        Field options:
-        """
-
-        for field in fields:
-            context = contexts.get(field, {})
-            values = context.get("common_values", [])
-            value_type = context.get("value_type", "unknown")
-
-            prompt += f"\n- Field: '{field}'\n"
-            prompt += f"  Type: {value_type}\n"
-
-            if values:
-                sample_values = ", ".join(
-                    f"'{v[0]}' (count: {v[1]})" for v in values[:5]
-                )
-                prompt += f"  Sample values: {sample_values}\n"
-
-        prompt += "\nOutput the single best field name to use as the canonical name. Just the name, no explanation:"
-
-        # Call LLM
-        response = await llm_provider.generate_text(
-            prompt, temperature=0.1, max_tokens=50
-        )
-
-        # Extract field name (should be just the field name)
-        selected_field = response.strip()
-
-        # Validate that the returned field is in our list
-        if selected_field in fields:
-            logger.info(f"LLM selected '{selected_field}' as canonical field")
-            return selected_field
-        else:
-            logger.warning(f"LLM returned invalid field name: '{selected_field}'")
-            return None
-
-    except Exception as e:
-        logger.error(f"Error using LLM for field selection: {str(e)}")
-        return None
-
-
-async def validate_field_mapping(
-    field_mapping: Dict[str, str], existing_mappings: Optional[Dict[str, str]] = None
-) -> Tuple[Dict[str, str], List[str]]:
-    """Validate field mapping for conflicts and consistency.
-
-    Args:
-        field_mapping: Proposed field mapping
-        existing_mappings: Existing field mappings to check against
-
-    Returns:
-        Tuple of (validated_mapping, warnings)
-    """
-    validated_mapping = {}
-    warnings = []
-
-    # Check for protected fields
-    for original, canonical in field_mapping.items():
-        # Don't map to protected fields unless they already are protected
-        if canonical in PROTECTED_FIELDS and original not in PROTECTED_FIELDS:
-            warnings.append(
-                f"WARNING: Mapping '{original}' to protected field '{canonical}' is not allowed"
-            )
-            # Skip this mapping
-            continue
-
-        # Check for conflicts with existing mappings
-        if existing_mappings and original in existing_mappings:
-            existing_canonical = existing_mappings[original]
-            if canonical != existing_canonical:
-                warnings.append(
-                    f"Warning: Changing mapping for '{original}' from '{existing_canonical}' to '{canonical}'"
-                )
-
-        validated_mapping[original] = canonical
-
-    return validated_mapping, warnings
-
-
-async def generate_mapping_impact_report(
-    field_mapping: Dict[str, str], field_metadata: Dict[str, Any]
-) -> Dict[str, Any]:
-    """Generate a report on the impact of applying a field mapping.
-
-    Args:
-        field_mapping: Field mapping to analyze
-        field_metadata: Metadata about the fields and their contexts
-
-    Returns:
-        Dictionary with impact statistics
-    """
-    # Count affected listings per field
-    field_counts = {}
-    for field, canonical in field_mapping.items():
-        if field == canonical:
-            continue  # Skip self-mappings
-
-        # Get context data (if available)
-        context = None
-        for c_field, meta in field_metadata.items():
-            if field in meta.get("similar_fields", []):
-                context = meta.get("contexts", {}).get(field, {})
-                break
-
-        # Get occurrence count from context if available
-        if context and "occurrence_count" in context:
-            field_counts[field] = context["occurrence_count"]
-        else:
-            # Fallback - get count from DB
-            try:
-                values = await get_most_common_values(field, limit=1)
-                field_counts[field] = sum(count for _, count in values)
-            except Exception:
-                field_counts[field] = 0
-
-    # Calculate totals
-    total_fields = len(field_mapping)
-    actual_mappings = sum(1 for f, c in field_mapping.items() if f != c)
-    total_affected_docs = sum(field_counts.values())
-
-    return {
-        "total_fields": total_fields,
-        "total_mapped_fields": actual_mappings,
-        "total_affected_documents": total_affected_docs,
-        "field_counts": field_counts,
-        "clusters": [
-            {
-                "canonical": canonical,
-                "mapped_fields": meta.get("similar_fields", []),
-                "field_types": {
-                    field: meta.get("contexts", {})
-                    .get(field, {})
-                    .get("value_type", "unknown")
-                    for field in meta.get("similar_fields", [])
-                },
-            }
-            for canonical, meta in field_metadata.items()
-        ],
+    # Check for boolean patterns
+    bool_patterns = {
+        "yes/no": ["yes", "no"],
+        "true/false": ["true", "false"],
+        "1/0": ["1", "0"],
+        "on/off": ["on", "off"],
     }
+
+    for pattern_name, bool_values in bool_patterns.items():
+        if all(v.lower() in bool_values for v in all_values):
+            return {
+                "type": "boolean",
+                "patterns": [pattern_name],
+                "unit": None,
+                "stats": None,
+            }
+
+    # Check for categorical patterns
+    if len(set(all_values)) <= 10:  # Arbitrary threshold for categorical
+        return {
+            "type": "categorical",
+            "patterns": ["finite_set"],
+            "unit": None,
+            "stats": None,
+        }
+
+    return {"type": "unknown", "patterns": [], "unit": None, "stats": None}
+
+
+async def should_fuse_fields(
+    field1: str,
+    field2: str,
+    field1_values: List[Tuple[str, int]],
+    field2_values: List[Tuple[str, int]],
+    similarity: float,
+) -> bool:
+    """Determine if two fields should be fused based on their values and semantic similarity.
+
+    Args:
+        field1: First field name
+        field2: Second field name
+        field1_values: List of (value, count) tuples for first field
+        field2_values: List of (value, count) tuples for second field
+        similarity: Semantic similarity between field names
+
+    Returns:
+        True if fields should be fused, False otherwise
+    """
+    # Get value patterns for both fields
+    pattern1 = detect_value_pattern(field1_values)
+    pattern2 = detect_value_pattern(field2_values)
+
+    # If both fields are numeric with same unit, fuse if similarity is high enough
+    if (
+        pattern1["type"] == "numeric"
+        and pattern2["type"] == "numeric"
+        and pattern1["unit"] == pattern2["unit"]
+    ):
+        return similarity >= 0.8
+
+    # If both fields are boolean with same pattern, fuse if similarity is high enough
+    if (
+        pattern1["type"] == "boolean"
+        and pattern2["type"] == "boolean"
+        and pattern1["patterns"] == pattern2["patterns"]
+    ):
+        return similarity >= 0.8
+
+    # If both fields are categorical with similar value sets, fuse if similarity is high enough
+    if pattern1["type"] == "categorical" and pattern2["type"] == "categorical":
+        # Calculate value set similarity
+        values1 = set(v[0] for v in field1_values)
+        values2 = set(v[0] for v in field2_values)
+        value_similarity = len(values1.intersection(values2)) / len(
+            values1.union(values2)
+        )
+        return value_similarity >= 0.5 and similarity >= 0.8
+
+    # For other cases, use LLM to make the decision
+    prompt = f"""
+    Determine if these two fields should be fused based on their names and value patterns.
+    
+    Field 1: {field1}
+    Pattern 1: {pattern1}
+    Sample values 1: {field1_values[:5]}
+    
+    Field 2: {field2}
+    Pattern 2: {pattern2}
+    Sample values 2: {field2_values[:5]}
+    
+    Semantic similarity: {similarity}
+    
+    Consider:
+    1. Do they represent the same information?
+    2. Are their value patterns compatible?
+    3. Would fusing them improve data consistency?
+    
+    Respond with only "yes" or "no".
+    """
+
+    try:
+        response = await llm_provider.generate_text(
+            prompt, temperature=1.0, max_tokens=10
+        )
+        return response.strip().lower() == "yes"
+    except Exception as e:
+        logger.error(f"Error using LLM for field fusion decision: {str(e)}")
+        return False
 
 
 async def fuse_info_fields(
@@ -428,69 +267,134 @@ async def fuse_info_fields(
     use_llm: bool = True,
     min_occurrence: int = MIN_OCCURRENCE_THRESHOLD,
 ) -> Dict[str, Any]:
-    """Enhanced version: Fuse semantically similar fields from listings using a hybrid approach.
-
-    This function:
-    1. Collects all unique field names from the listings
-    2. Gets embeddings for each field name
-    3. Creates a mapping from each field to its canonical form using semantic similarity
-    4. Uses value context and optional LLM refinement for ambiguous cases
-    5. Validates the mapping for conflicts
-    6. Applies the mapping using the analytics service
+    """Fuse semantically similar fields from listings using value patterns and LLM.
 
     Args:
-        similarity_threshold: Threshold for considering fields similar (default: 0.9)
+        similarity_threshold: Threshold for considering fields similar
         dry_run: If True, only generate mapping without applying it
-        use_llm: Whether to use LLM for ambiguous cases (default: True)
-        min_occurrence: Minimum occurrences for a field to be considered (default: 5)
+        use_llm: Whether to use LLM for ambiguous cases
+        min_occurrence: Minimum occurrences for a field to be considered
 
     Returns:
         Dictionary with field mapping and impact report
     """
     try:
-        # Start timing the operation
         start_time = time.time()
 
         # Get current field mapping
-        current_mapping = await get_current_field_mapping()
+        current_mapping = await get_active_field_mapping()
         existing_mappings = current_mapping.mappings if current_mapping else {}
 
         # Collect all unique field names
         field_names = await get_distinct_info_fields()
         logger.info(f"Found {len(field_names)} unique field names")
 
-        # Apply filtering for minimum occurrence
+        # Filter fields by minimum occurrence
         if min_occurrence > 0:
             filtered_fields = []
+            # Get values for all fields at once
+            field_values_dict = await get_most_common_values(list(field_names), limit=5)
+            if not isinstance(field_values_dict, dict):
+                logger.error("Expected dictionary of field values")
+                return {"error": "Failed to get field values"}
+
             for field in field_names:
                 try:
-                    values = await get_most_common_values(field, limit=1)
-                    count = sum(count for _, count in values)
+                    values = field_values_dict.get(field, [])
+                    counts = [int(count) for _, count in values]
+                    count = sum(counts)
                     if count >= min_occurrence:
                         filtered_fields.append(field)
                 except Exception as e:
                     logger.warning(f"Error getting count for field {field}: {str(e)}")
-                    filtered_fields.append(field)  # Include it anyway to be safe
+                    filtered_fields.append(field)
 
             logger.info(
                 f"Filtered to {len(filtered_fields)} fields with >= {min_occurrence} occurrences"
             )
             field_names_list = sorted(filtered_fields)
         else:
-            field_names_list = sorted(list(field_names))  # Sort for consistent ordering
+            field_names_list = sorted(list(field_names))
 
         # Get embeddings for all field names
         logger.debug("Getting embeddings for field names")
-        embeddings = await provider.get_embeddings(field_names_list)
+        embeddings = await embeddings_provider.get_embeddings(field_names_list)
 
         if not embeddings or len(embeddings) != len(field_names_list):
             logger.error("Failed to get embeddings for all fields")
             return {"error": "Failed to get embeddings for all fields"}
 
-        # Calculate field similarity and create mapping with value context
-        field_mapping, field_metadata = await calculate_field_similarity_with_context(
-            field_names_list, embeddings, similarity_threshold
-        )
+        # Calculate similarity matrix
+        similarity_matrix = cosine_similarity(np.array(embeddings))
+
+        # Process each pair of fields
+        field_mapping = {}
+        field_metadata = {}
+        processed = set()
+
+        # Get values for all fields at once
+        all_field_values_dict = await get_most_common_values(field_names_list)
+        if not isinstance(all_field_values_dict, dict):
+            logger.error("Expected dictionary of field values")
+            return {"error": "Failed to get field values"}
+
+        for i in range(len(field_names_list)):
+            field1 = field_names_list[i]
+            if field1 in processed:
+                continue
+
+            # Get values for field1 from pre-fetched results
+            field1_values = all_field_values_dict.get(field1, [])
+
+            for j in range(i + 1, len(field_names_list)):
+                field2 = field_names_list[j]
+                if field2 in processed:
+                    continue
+
+                similarity = similarity_matrix[i][j]
+                if similarity < similarity_threshold:
+                    continue
+
+                # Get values for field2 from pre-fetched results
+                field2_values = all_field_values_dict.get(field2, [])
+
+                # Determine if fields should be fused
+                should_fuse = await should_fuse_fields(
+                    field1, field2, field1_values, field2_values, similarity
+                )
+
+                if should_fuse:
+                    # Choose canonical field based on occurrence count
+                    counts1 = [int(count) for _, count in field1_values]
+                    counts2 = [int(count) for _, count in field2_values]
+                    count1 = sum(counts1)
+                    count2 = sum(counts2)
+
+                    canonical_field = field1 if count1 >= count2 else field2
+                    mapped_field = field2 if canonical_field == field1 else field1
+
+                    field_mapping[mapped_field] = canonical_field
+                    processed.add(mapped_field)
+
+                    # Store metadata
+                    if canonical_field not in field_metadata:
+                        field_metadata[canonical_field] = {
+                            "similar_fields": [],
+                            "contexts": {},
+                        }
+                    field_metadata[canonical_field]["similar_fields"].append(
+                        mapped_field
+                    )
+                    field_metadata[canonical_field]["contexts"][mapped_field] = {
+                        "values": field2_values,
+                        "pattern": detect_value_pattern(field2_values),
+                    }
+
+        # Add self-mappings for unprocessed fields
+        for field in field_names_list:
+            if field not in processed:
+                field_mapping[field] = field
+                processed.add(field)
 
         # Validate field mapping
         validated_mapping, warnings = await validate_field_mapping(
@@ -575,3 +479,240 @@ async def revert_mappings(mapping_ids: List[str], dry_run: bool = True) -> List:
         List of reversion results, one per mapping ID
     """
     return await revert_field_mappings(mapping_ids, dry_run)
+
+
+async def validate_field_mapping(
+    field_mapping: Dict[str, str], existing_mappings: Optional[Dict[str, str]] = None
+) -> Tuple[Dict[str, str], List[str]]:
+    """Validate field mapping for conflicts and consistency.
+
+    Args:
+        field_mapping: Proposed field mapping
+        existing_mappings: Existing field mappings to check against
+
+    Returns:
+        Tuple of (validated_mapping, warnings)
+    """
+    validated_mapping = {}
+    warnings = []
+
+    # Check for protected fields
+    for original, canonical in field_mapping.items():
+        # Don't map to protected fields unless they already are protected
+        if canonical in PROTECTED_FIELDS and original not in PROTECTED_FIELDS:
+            warnings.append(
+                f"WARNING: Mapping '{original}' to protected field '{canonical}' is not allowed"
+            )
+            # Skip this mapping
+            continue
+
+        # Check for conflicts with existing mappings
+        if existing_mappings and original in existing_mappings:
+            existing_canonical = existing_mappings[original]
+            if canonical != existing_canonical:
+                warnings.append(
+                    f"Warning: Changing mapping for '{original}' from '{existing_canonical}' to '{canonical}'"
+                )
+
+        validated_mapping[original] = canonical
+
+    return validated_mapping, warnings
+
+
+async def generate_mapping_impact_report(
+    field_mapping: Dict[str, str], field_metadata: Dict[str, Any]
+) -> Dict[str, Any]:
+    """Generate a report on the impact of applying a field mapping.
+
+    Args:
+        field_mapping: Field mapping to analyze
+        field_metadata: Metadata about the fields and their contexts
+
+    Returns:
+        Dictionary with impact statistics
+    """
+    # Count affected listings per field
+    field_counts = {}
+    for field, canonical in field_mapping.items():
+        if field == canonical:
+            continue  # Skip self-mappings
+
+        # Get context data (if available)
+        context = None
+        for c_field, meta in field_metadata.items():
+            if field in meta.get("similar_fields", []):
+                context = meta.get("contexts", {})
+                break
+
+        # Get occurrence count from context if available
+        if context and "occurrence_count" in context:
+            field_counts[field] = context["occurrence_count"]
+        else:
+            # Fallback - get count from DB
+            try:
+                values = await get_most_common_values(field, limit=1)
+                field_counts[field] = sum(
+                    int(count) for _, count in values if isinstance(count, (int, str))
+                )
+            except Exception:
+                field_counts[field] = 0
+
+    # Calculate totals
+    total_fields = len(field_mapping)
+    actual_mappings = sum(1 for f, c in field_mapping.items() if f != c)
+    total_affected_docs = sum(field_counts.values())
+
+    return {
+        "total_fields": total_fields,
+        "total_mapped_fields": actual_mappings,
+        "total_affected_documents": total_affected_docs,
+        "field_counts": field_counts,
+        "clusters": [
+            {
+                "canonical": canonical,
+                "mapped_fields": meta.get("similar_fields", []),
+                "field_types": {
+                    field: meta.get("contexts", {})
+                    .get(field, {})
+                    .get("value_type", "unknown")
+                    for field in meta.get("similar_fields", [])
+                },
+            }
+            for canonical, meta in field_metadata.items()
+        ],
+    }
+
+
+async def canonicalize_fields(
+    product_collection_id: str,
+    canonical_fields: Dict[str, List[str]],
+    apply: bool = True,
+) -> Dict[str, Any]:
+    """Canonicalize fields in a product collection."""
+    start_time = time.time()
+    logging.info(f"Canonicalizing fields for collection {product_collection_id}")
+
+    # Get all fields that need to be mapped
+    all_mapped_fields = []
+    for canonical, fields in canonical_fields.items():
+        all_mapped_fields.extend(fields)
+
+    # Process fields in batches to avoid pipeline limits
+    BATCH_SIZE = 100
+    field_batches = [
+        all_mapped_fields[i : i + BATCH_SIZE]
+        for i in range(0, len(all_mapped_fields), BATCH_SIZE)
+    ]
+
+    # Get occurrence counts for all fields
+    field_counts = {}
+    for batch in field_batches:
+        field_names = await get_distinct_info_fields()
+        for field in batch:
+            if field in field_names:
+                field_counts[field] = field_names[field]
+
+    # Create mapping statistics
+    mappings = []
+    total_affected_docs = 0
+
+    # Process each canonical field
+    for canonical_field, mapped_fields in canonical_fields.items():
+        affected_docs = 0
+
+        # Calculate total affected documents
+        for field in mapped_fields:
+            if field in field_counts:
+                affected_docs = max(affected_docs, field_counts.get(field, 0))
+
+        total_affected_docs += affected_docs
+
+        mappings.append(
+            {
+                "canonical_field": canonical_field,
+                "mapped_fields": mapped_fields,
+                "affected_documents": affected_docs,
+            }
+        )
+
+    # Apply the canonicalization if requested
+    if apply:
+        # Process mapping in batches to avoid large updates
+        processed_count = 0
+        batch_size = 1000  # Process 1000 documents at a time
+
+        for mapping in mappings:
+            canonical_field = mapping["canonical_field"]
+            mapped_fields = mapping["mapped_fields"]
+
+            # Skip if no fields to map
+            if not mapped_fields:
+                continue
+
+            # Process documents in batches
+            skip = 0
+            while True:
+                cursor = AnalyzedListingDocument.find(
+                    {"original_listing_id": {"$exists": True}},
+                    limit=batch_size,
+                    skip=skip,
+                )
+
+                # Fetch documents for this batch
+                docs = await cursor.to_list()
+                if not docs:
+                    break
+
+                # Update each document
+                updates = []
+                for doc in docs:
+                    doc_update = False
+                    for field in mapped_fields:
+                        if field != canonical_field and field in doc.info:
+                            # Only update if the field exists in this document
+                            if (
+                                canonical_field not in doc.info
+                                or not doc.info[canonical_field]
+                            ):
+                                doc.info[canonical_field] = doc.info[field]
+                                doc_update = True
+
+                    if doc_update:
+                        updates.append(doc)
+
+                # Save updates
+                if updates:
+                    try:
+                        # Use insert_many for bulk operations
+                        await AnalyzedListingDocument.insert_many(updates)
+                        processed_count += len(updates)
+
+                        # Log progress
+                        if processed_count % 5000 == 0:
+                            logging.info(
+                                f"Canonicalized {processed_count} documents..."
+                            )
+                    except Exception as e:
+                        logging.error(f"Error saving canonicalized documents: {str(e)}")
+
+                skip += batch_size
+
+    # Return result
+    end_time = time.time()
+    execution_time = round(end_time - start_time, 2)
+
+    result = {
+        "mappings": mappings,
+        "total_canonical_fields": len(canonical_fields),
+        "total_mapped_fields": len(all_mapped_fields),
+        "total_affected_documents": total_affected_docs,
+        "execution_time": execution_time,
+    }
+
+    if apply:
+        result["applied"] = True
+        result["processed_documents"] = processed_count
+    else:
+        result["applied"] = False
+
+    return result

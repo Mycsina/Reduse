@@ -8,7 +8,7 @@ from fastapi import FastAPI, Request, Response
 from fastapi.responses import JSONResponse
 from starlette.middleware.base import BaseHTTPMiddleware
 
-from .errors import VroomError, convert_exception
+from .errors import ReduseError, convert_exception
 
 # Configure logger
 logger = logging.getLogger(__name__)

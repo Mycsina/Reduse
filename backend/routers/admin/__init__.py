@@ -2,7 +2,7 @@
 
 from fastapi import APIRouter
 
-from . import analytics, analysis, scrape
+from . import analysis, analytics, scrape
 
 # Create router
 router = APIRouter()

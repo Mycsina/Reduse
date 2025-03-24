@@ -19,7 +19,6 @@ LOGS_DIR = BASE_DIR / "logs"
 class PROVIDER_TYPE(Enum):
     GOOGLE = "google"
     GROQ = "groq"
-    COMPOSITE = "composite"
 
 
 class APISettings(BaseSettings):
@@ -65,15 +64,8 @@ class AISettings(BaseSettings):
     google_api_key: SecretStr = Field(default="", env="GOOGLE_API_KEY")  # type: ignore
     openai_api_key: SecretStr = Field(default="", env="OPENAI_API_KEY")  # type: ignore
     groq_api_key: SecretStr = Field(default="", env="GROQ_API_KEY")  # type: ignore
-    default_provider: PROVIDER_TYPE = Field(default=PROVIDER_TYPE.COMPOSITE)  # Default to the composite provider
-    rate_limits: Dict[str, int] = Field(
-        default={
-            "requests_per_minute": 60,
-            "tokens_per_minute": 60000,
-            "requests_per_day": 10000,
-            "max_retries": 3,
-        }
-    )
+    default_provider: PROVIDER_TYPE = Field(default=PROVIDER_TYPE.GOOGLE)  # Default to the composite provider
+    default_model: str = Field(default="gemma-3-27b-it", env="AI_DEFAULT_MODEL")  # type: ignore
     google_project_id: str = Field(default="", env="GOOGLE_PROJECT_ID")  # type: ignore
     google_location: str = Field(default="us-central1", env="GOOGLE_LOCATION")  # type: ignore
 
@@ -171,17 +163,6 @@ class EbaySettings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", extra="allow")
 
 
-class CacheSettings(BaseSettings):
-    """Cache-related settings."""
-
-    redis_url: str = Field(default="redis://localhost:6379/0", env="REDIS_URL")  # type: ignore
-    default_ttl: int = Field(default=3600)  # 1 hour default TTL
-    embedding_ttl: int = Field(default=86400 * 7)  # 1 week for embeddings
-    enable_pickle: bool = Field(default=True)  # Allow pickle for complex objects
-
-    model_config = SettingsConfigDict(env_file=".env", extra="allow")
-
-
 class Settings(BaseSettings):
     """Global settings container."""
 
@@ -192,7 +173,6 @@ class Settings(BaseSettings):
     logging: LoggingSettings = Field(default_factory=LoggingSettings)
     scheduler: SchedulerSettings = Field(default_factory=SchedulerSettings)
     ebay: EbaySettings = Field(default_factory=EbaySettings)  # type: ignore
-    cache: CacheSettings = Field(default_factory=CacheSettings)
 
     model_config = SettingsConfigDict(env_file=".env", extra="allow")
 

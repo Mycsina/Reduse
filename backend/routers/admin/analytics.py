@@ -8,8 +8,8 @@ from fastapi import APIRouter, BackgroundTasks, Depends
 from pydantic import BaseModel, Field
 
 from ...logic import analytics as analytics_logic
-from ...services.analytics import update_model_price_stats
 from ...security import verify_api_key
+from ...services.analytics import update_model_price_stats
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -45,6 +45,7 @@ class FuseFieldsResponse(BaseModel):
 
 class UpdateStatsResponse(BaseModel):
     """Response model for update stats endpoint."""
+
     message: str
 
 

@@ -1,39 +1,20 @@
-"""Base prompt configuration and templates."""
+"""Base prompt class."""
 
-from typing import Any, Dict, List, Optional, Tuple, Union
-
-from pydantic import BaseModel, Field
+from typing import Any, Dict, List, Tuple
 
 
-class BasePromptConfig(BaseModel):
-    """Base configuration for prompts."""
+class Prompt:
+    """Base class for all prompts."""
 
-    temperature: float = Field(default=0.7, ge=0.0, le=1.0)
-    max_tokens: Optional[int] = Field(default=None, gt=0)
-    system_prompt: str
-
-    def to_dict(self) -> Dict[str, Any]:
-        """Convert config to dictionary."""
-        return {"temperature": self.temperature, "max_tokens": self.max_tokens, "system_prompt": self.system_prompt}
-
-
-# Define message types for clarity
-Message = Tuple[str, str]  # (role, content)
-MessageList = List[Message]
-
-
-class BasePromptTemplate:
-    """Base template for prompts."""
-
-    def __init__(self, template: str, config: BasePromptConfig):
-        """Initialize the prompt template.
+    def __init__(self, template: str, system_prompt: str):
+        """Initialize the prompt.
 
         Args:
             template: The prompt template string
-            config: Prompt configuration
+            system_prompt: The system prompt
         """
         self.template = template
-        self.config = config
+        self.system_prompt = system_prompt
 
     def format(self, **kwargs: Any) -> str:
         """Format the prompt template with variables.
@@ -46,22 +27,17 @@ class BasePromptTemplate:
         """
         return self.template.format(**kwargs)
 
-    def to_messages(self, **kwargs: Any) -> MessageList:
+    def to_messages(self, **kwargs: Any) -> List[Dict[str, str]]:
         """Convert the template to a list of messages.
 
         Args:
             **kwargs: Variables to format the template with
 
         Returns:
-            MessageList: List of (role, content) tuples
+            List[Dict[str, str]]: List of message dictionaries
         """
         formatted_user_message = self.format(**kwargs)
-        return [("system", self.config.system_prompt), ("user", formatted_user_message)]
-
-    def get_config(self) -> Dict[str, Any]:
-        """Get the prompt configuration.
-
-        Returns:
-            dict: The prompt configuration
-        """
-        return self.config.to_dict()
+        return [
+            {"role": "system", "content": self.system_prompt},
+            {"role": "user", "content": formatted_user_message},
+        ]

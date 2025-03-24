@@ -14,6 +14,12 @@ from ..schemas.listings import AnalysisStatus, ListingDocument
 
 logger = logging.getLogger(__name__)
 
+# Cache configuration
+PROTECTED_FIELDS = {"type", "brand", "base_model", "model_variant"}
+MIN_OCCURRENCE_THRESHOLD = (
+    5  # Minimum number of occurrences for a field to be considered common
+)
+
 
 def build_mongo_query(filter_group: Optional[FilterGroup]) -> Dict[str, Any]:
     """Convert filter group to MongoDB query.
@@ -65,7 +71,7 @@ def build_mongo_query(filter_group: Optional[FilterGroup]) -> Dict[str, Any]:
     return {operator: conditions}
 
 
-async def get_listings_data(
+async def get_listings(
     price_min: Optional[float] = None,
     price_max: Optional[float] = None,
     status: Optional[AnalysisStatus] = None,
@@ -106,19 +112,19 @@ async def get_listings_data(
     return await ListingDocument.find(query).skip(skip).limit(limit).to_list()
 
 
-async def get_listing_data(listing_id: str) -> Optional[ListingDocument]:
+async def get_listing(listing_id: str) -> Optional[ListingDocument]:
     """Get a specific listing by ID."""
     return await ListingDocument.get(PydanticObjectId(listing_id))
 
 
-async def get_listing_by_original_id_data(
+async def get_listing_by_original_id(
     original_id: str,
 ) -> Optional[ListingDocument]:
     """Get a specific listing by original ID."""
     return await ListingDocument.find_one({"original_id": original_id})
 
 
-async def get_analyses_by_original_ids_data(
+async def get_analyses_by_original_ids(
     original_ids: List[str],
 ) -> List[AnalyzedListingDocument]:
     """Get multiple analyses by original IDs in a single query."""
@@ -127,7 +133,7 @@ async def get_analyses_by_original_ids_data(
     ).to_list()
 
 
-async def get_analyzed_listings_data(
+async def get_analyzed_listings(
     brand: Optional[str] = None,
     base_model: Optional[str] = None,
     variant: Optional[str] = None,
@@ -162,7 +168,7 @@ async def get_analyzed_listings_data(
     return list(zip(listings, analyzed_listings))
 
 
-async def get_analyzed_listing_data(
+async def get_analyzed_listing(
     analyzed_id: str,
 ) -> Optional[Tuple[ListingDocument, AnalyzedListingDocument]]:
     """Get a specific analysis by ID with its listing."""
@@ -179,14 +185,14 @@ async def get_analyzed_listing_data(
     return (original, analyzed)
 
 
-async def get_analysis_by_original_id_data(
+async def get_analysis_by_original_id(
     original_id: str,
 ) -> Optional[AnalyzedListingDocument]:
     """Get a specific analysis by original ID."""
     return await AnalyzedListingDocument.find_one({"original_listing_id": original_id})
 
 
-async def get_similar_listings_data(
+async def get_similar_listings(
     listing_id: str, limit: int = 6, offset: int = 0
 ) -> List[ListingDocument]:
     """Get similar listings based on embeddings similarity."""
@@ -196,7 +202,7 @@ async def get_similar_listings_data(
 
     logger.debug(f"Finding similar listings for: {listing.original_id}")
 
-    analysis = await get_analysis_by_original_id_data(listing.original_id)
+    analysis = await get_analysis_by_original_id(listing.original_id)
     if not analysis or not analysis.embeddings:
         return []
 
@@ -240,7 +246,7 @@ async def get_similar_listings_data(
     return similar_listings
 
 
-async def get_listings_with_analysis_data(
+async def get_listings_with_analysis(
     price_min: Optional[float] = None,
     price_max: Optional[float] = None,
     search_text: Optional[str] = None,
@@ -353,7 +359,7 @@ async def get_listings_with_analysis_data(
     return listings_with_analysis
 
 
-async def get_distinct_info_fields_data() -> List[str]:
+async def get_distinct_info_fields() -> List[str]:
     """Get all distinct fields used in the info dictionary across all analyzed listings."""
     pipeline = [
         {"$project": {"info_fields": {"$objectToArray": "$info"}}},
@@ -367,48 +373,88 @@ async def get_distinct_info_fields_data() -> List[str]:
 
 
 async def get_info_field_values(
-    field_name: str, limit: int = 10
-) -> List[Tuple[str, int]]:
-    """Get the most common values for a specific info field.
+    field_names: List[str], limit: int = 10
+) -> Dict[str, List[Tuple[str, int]]]:
+    """Get the most common values for multiple info fields in a single query.
 
     Args:
-        field_name: Name of the field to retrieve values for
-        limit: Maximum number of values to return
+        field_names: List of field names to retrieve values for
+        limit: Maximum number of values to return per field
 
     Returns:
-        List of (value, count) tuples for the most common values
+        Dictionary mapping field names to lists of (value, count) tuples for the most common values
     """
-    # Create the aggregation pipeline to get value frequencies
-    pipeline = [
-        # Match only documents with this field
-        {"$match": {f"info.{field_name}": {"$exists": True, "$ne": None}}},
-        # Group by value and count occurrences
-        {"$group": {"_id": f"$info.{field_name}", "count": {"$sum": 1}}},
-        # Sort by count descending
-        {"$sort": {"count": -1}},
-        # Limit to top N values
-        {"$limit": limit},
-    ]
+    if not field_names:
+        return {}
 
     try:
-        # Execute the pipeline
-        logger.debug(f"Getting common values for field: {field_name}")
-        result = await AnalyzedListingDocument.aggregate(pipeline).to_list()
+        # Create a single aggregation pipeline that handles all fields at once
+        pipeline = [
+            # Match documents with at least one of the requested fields
+            {
+                "$match": {
+                    "$or": [
+                        {f"info.{field}": {"$exists": True, "$ne": None}}
+                        for field in field_names
+                    ]
+                }
+            },
+            # Unwind the info fields to process them individually
+            {"$project": {"info": 1}},
+            # Converts the info object to array of key-value pairs
+            {"$project": {"info_entries": {"$objectToArray": "$info"}}},
+            # Unwind the array to work with individual entries
+            {"$unwind": "$info_entries"},
+            # Filter only the fields we're interested in
+            {"$match": {"info_entries.k": {"$in": field_names}}},
+            # Group by field name and value, counting occurrences
+            {
+                "$group": {
+                    "_id": {"field": "$info_entries.k", "value": "$info_entries.v"},
+                    "count": {"$sum": 1},
+                }
+            },
+            # Sort by field name and count (descending)
+            {"$sort": {"_id.field": 1, "count": -1}},
+        ]
 
-        # Format the result
-        values = [(str(doc["_id"]), doc["count"]) for doc in result]
-        logger.debug(f"Found {len(values)} common values for field: {field_name}")
-        return values
+        logger.debug(f"Getting common values for fields: {field_names}")
+        results = await AnalyzedListingDocument.aggregate(pipeline).to_list()
+
+        # Process the aggregation results
+        field_values: Dict[str, List[Tuple[str, int]]] = {
+            field: [] for field in field_names
+        }
+        for result in results:
+            try:
+                field = result["_id"]["field"]
+                value = result["_id"]["value"]
+                count = result["count"]
+
+                # Only add to the result if the list for this field isn't full yet
+                if field in field_values and len(field_values[field]) < limit:
+                    field_values[field].append((str(value), count))
+            except (KeyError, TypeError) as e:
+                logger.warning(f"Error processing result: {e}")
+                continue
+
+        # Log results
+        for field in field_names:
+            logger.debug(
+                f"Found {len(field_values[field])} common values for field: {field}"
+            )
+
+        return field_values
     except Exception as e:
-        logger.error(f"Error getting values for field {field_name}: {str(e)}")
-        return []
+        logger.error(f"Error getting values for fields {field_names}: {str(e)}")
+        return {field: [] for field in field_names}
 
 
-async def get_similar_listings_with_analysis_data(
+async def get_similar_listings_with_analysis(
     listing_id: str, skip: int = 0, limit: int = 12
 ) -> List[Tuple[ListingDocument, Optional[AnalyzedListingDocument]]]:
     """Get similar listings with their analysis data."""
-    similar = await get_similar_listings_data(listing_id, limit, skip)
+    similar = await get_similar_listings(listing_id, limit, skip)
     if not similar:
         return []
 
@@ -460,7 +506,7 @@ async def query_listings_with_analysis_raw(
     return listings_with_analysis
 
 
-async def get_listing_with_analysis_data(
+async def get_listing_with_analysis(
     listing_id: str,
 ) -> Optional[Tuple[ListingDocument, Optional[AnalyzedListingDocument]]]:
     """Get a specific listing with its analysis data."""
@@ -468,5 +514,5 @@ async def get_listing_with_analysis_data(
     if not listing:
         return None
 
-    analysis = await get_analysis_by_original_id_data(listing.original_id)
+    analysis = await get_analysis_by_original_id(listing.original_id)
     return (listing, analysis)

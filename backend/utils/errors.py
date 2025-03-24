@@ -3,6 +3,8 @@
 import logging
 from typing import Any, Dict, Optional, Type
 
+from tenacity import retry
+
 # Configure logger
 logger = logging.getLogger(__name__)
 
@@ -93,14 +95,16 @@ class DocumentNotFoundError(DatabaseError):
 
 
 # AI Provider Errors
-class AIProviderError(ReduseError):
+class ProviderError(ReduseError):
     """Base class for AI provider errors."""
 
     pass
 
 
-class RateLimitError(AIProviderError):
+class RateLimitError(ProviderError):
     """Provider rate limit exceeded."""
+
+    retry_after: float = 0
 
     def __init__(self, provider: str, retry_after: Optional[float] = None):
         """Initialize rate limit error.
@@ -110,14 +114,13 @@ class RateLimitError(AIProviderError):
             retry_after: Seconds to wait before retrying
         """
         message = f"Rate limit exceeded for provider {provider}"
-        details = {"provider": provider}
-        if retry_after is not None:
-            details["retry_after"] = str(retry_after)
+        details = {"provider": provider, "retry_after": retry_after or 0}
+        self.retry_after = retry_after or 0
 
         super().__init__(message=message, status_code=429, details=details)
 
 
-class ProviderResponseError(AIProviderError):
+class ProviderResponseError(ProviderError):
     """Error in AI provider response."""
 
     pass

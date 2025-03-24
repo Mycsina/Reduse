@@ -10,7 +10,6 @@ from beanie import Document
 
 from ...config import settings
 from ...schemas.listings import ListingDocument
-from ...utils.oauth import OAuthManager
 from .scraper_base import Scraper
 
 
@@ -32,12 +31,7 @@ class EbayScraper(Scraper):
         if not app_id or not cert_id or not app_credentials:
             raise ValueError("Missing eBay API credentials")
 
-        self.oauth = OAuthManager(
-            token_url=self.auth_url,
-            client_id=app_id,
-            client_secret=cert_id,
-            scope="https://api.ebay.com/oauth/api_scope",
-        )
+        self.oauth = None  # TODO: Implement OAuth
 
     @classmethod
     def can_handle(cls, url: str) -> bool:
@@ -57,7 +51,8 @@ class EbayScraper(Scraper):
         if not self.client:
             raise RuntimeError("Failed to create httpx client")
 
-        token = await self.oauth.get_token()
+        # token = await self.oauth.get_token()
+        token = "TODO"
 
         headers = {
             "Authorization": f"Bearer {token}",
@@ -147,7 +142,7 @@ class EbayScraper(Scraper):
             if self.client:
                 await self.client.aclose()
                 self.client = None
-            await self.oauth.close()
+            # await self.oauth.close()
 
     async def __aenter__(self):
         """Async context manager entry."""
@@ -159,4 +154,4 @@ class EbayScraper(Scraper):
         if self.client:
             await self.client.aclose()
             self.client = None
-        await self.oauth.close()
+        # await self.oauth.close()

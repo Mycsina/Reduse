@@ -1,36 +1,20 @@
 """Prompt for converting natural language queries to structured ListingQuery objects."""
 
-import json
-import re
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List
 
-from pydantic import BaseModel, Field
-
-from backend.routers.query.listings import ListingQuery
-
-from .base import BasePromptConfig, BasePromptTemplate
+from .base import Prompt
 
 
-class ListingQueryConfig(BasePromptConfig):
-    """Configuration for the listing query prompt."""
+class ListingQueryPrompt(Prompt):
+    """Prompt for converting natural language queries to structured ListingQuery objects."""
 
     def __init__(self):
-        """Initialize with default configuration."""
+        """Initialize the prompt."""
         system_prompt = """You are an AI assistant that converts natural language queries into structured JSON objects for database filtering. 
 Your job is to extract search criteria from user queries and format them into a structured ListingQuery JSON object.
 Never include any explanations, code, or markdown formatting in your response - only return the raw JSON object."""
 
-        super().__init__(
-            system_prompt=system_prompt,
-            temperature=0.5,
-            max_tokens=500,  # Reduced to optimize for cheaper models
-        )
-
-
-class ListingQueryPrompt(BasePromptTemplate):
-    """Prompt for converting natural language queries to structured ListingQuery objects."""
-
-    template = """
+        template = """
 User query: "{query}"
 
 AVAILABLE FIELDS:
@@ -99,25 +83,12 @@ Query: "Red cars with low mileage from 2018 or newer"
 YOUR RESPONSE (JSON only):
 """
 
-    def __init__(self):
-        """Initialize the prompt with default configuration."""
-        super().__init__(template=self.template, config=ListingQueryConfig())
+        super().__init__(template=template, system_prompt=system_prompt)
 
     def format(self, query: str, available_fields: List[str]) -> str:
         """Format the prompt with the query and available fields."""
-
-        # Format fields as a simple bullet list
         formatted_fields = "\n".join([f"- {field}" for field in available_fields])
-
         return self.template.format(query=query, available_fields=formatted_fields)
-
-    def to_messages(self, **kwargs: Any) -> List[Dict[str, str]]:
-        """Convert the template to a list of messages for AI providers."""
-        formatted_user_message = self.format(**kwargs)
-        return [
-            {"role": "system", "content": self.config.system_prompt},
-            {"role": "user", "content": formatted_user_message},
-        ]
 
 
 def create_listing_query_prompt() -> ListingQueryPrompt:
