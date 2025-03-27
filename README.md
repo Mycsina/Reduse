@@ -51,11 +51,11 @@ A modern web application for intelligent product analysis and tracking, built wi
 
 ### Frontend Features
 
-- ✅ Real-time listing updates
-- ✅ Advanced search and filtering
-- ✅ Comparison tools
-- ✅ Task scheduling interface
-- ✅ Analysis visualization
+- [ ] Real-time listing updates
+- [ ] Advanced search and filtering
+- [ ] Comparison tools
+- [ ] Task scheduling interface
+- [ ] Analysis visualization
 
 ## 🏗️ Architecture
 
@@ -74,7 +74,6 @@ A modern web application for intelligent product analysis and tracking, built wi
 - Tailwind CSS for styling
 - React Query for data fetching
 - Radix UI for accessible components
-- Server-side rendering (SSR)
 
 ## 🚀 Getting Started
 
