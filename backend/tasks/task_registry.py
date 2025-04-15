@@ -14,9 +14,6 @@ from .function_introspection import introspect
 logger = logging.getLogger(__name__)
 
 
-functionDiscovery = introspect()
-
-
 class TaskConfig(BaseModel):
     """Base configuration for scheduled tasks."""
 
@@ -78,7 +75,6 @@ class TaskRegistry:
         self.job_logs: Dict[str, asyncio.Queue[JobLogMessage]] = {}
         self.job_statuses: Dict[str, JobStatus] = {}
         self.job_log_filters: Dict[str, List[JobLogFilter]] = {}
-        self.function_discovery = functionDiscovery
 
     def register(self, config_class: Optional[Type[TaskConfig]] = None):
         """Decorator to register a task with optional custom configuration."""
@@ -192,7 +188,8 @@ class TaskRegistry:
         job_id = str(uuid.uuid4())
 
         # Get the function using FunctionDiscovery
-        task_func = self.function_discovery.create_task_from_function(function_path)
+        discovery = introspect()
+        task_func = discovery.create_task_from_function(function_path)
         if task_func is None:
             raise ValueError(
                 f"Function {function_path} not found or could not be converted to task"

@@ -13,13 +13,11 @@ from apscheduler.triggers.interval import IntervalTrigger
 from pymongo import MongoClient
 
 from ..config import settings
-from .function_introspection import introspect
+from .function_introspection import \
+    introspect  # Keep import for type hinting if needed, but don't call at top level
 from .task_registry import TaskConfig
 
 logger = logging.getLogger(__name__)
-
-
-functionDiscovery = introspect()
 
 
 class Scheduler:
@@ -61,8 +59,9 @@ class Scheduler:
         if not self.scheduler:
             raise RuntimeError("Scheduler not initialized")
 
-        # Create task from function using FunctionDiscovery
-        task_func = functionDiscovery.create_task_from_function(function_path)
+        # Get discovery instance inside the method
+        discovery = introspect()
+        task_func = discovery.create_task_from_function(function_path)
         if task_func is None:
             raise ValueError(
                 f"Function {function_path} not found or could not be converted to task"

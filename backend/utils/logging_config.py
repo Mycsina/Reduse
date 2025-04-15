@@ -62,8 +62,13 @@ def setup_logging():
     root_logger = logging.getLogger()
     root_logger.setLevel(logging.DEBUG)  # Capture all logs, handlers will filter
 
+    # Remove existing handlers to prevent duplicates if logging was configured elsewhere
+    if root_logger.hasHandlers():
+        root_logger.handlers.clear()
+
     # Create formatters and handlers
     formatter = logging.Formatter(settings.logging.format)
+    file_formatter = logging.Formatter(settings.logging.file_format)
 
     # Console handler with configured console level
     console_handler = logging.StreamHandler(sys.stdout)
@@ -83,7 +88,7 @@ def setup_logging():
     )
     file_handler.suffix = "%Y-%m-%d"  # Add date suffix to rotated files
     file_handler.setLevel(settings.logging.file_log_level)
-    file_handler.setFormatter(formatter)
+    file_handler.setFormatter(file_formatter)
     root_logger.addHandler(file_handler)
 
     # Clean up old log files

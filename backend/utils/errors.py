@@ -3,8 +3,6 @@
 import logging
 from typing import Any, Dict, Optional, Type
 
-from tenacity import retry
-
 # Configure logger
 logger = logging.getLogger(__name__)
 
@@ -57,43 +55,6 @@ class ReduseError(Exception):
         logger.log(level, f"{self.message}", extra=log_context)
 
 
-# Database Errors
-class DatabaseError(ReduseError):
-    """Base class for database-related errors."""
-
-    pass
-
-
-class ConnectionError(DatabaseError):
-    """Error establishing database connection."""
-
-    pass
-
-
-class QueryError(DatabaseError):
-    """Error executing database query."""
-
-    pass
-
-
-class DocumentNotFoundError(DatabaseError):
-    """Requested document not found."""
-
-    def __init__(self, document_type: str, query: Optional[Dict[str, Any]] = None):
-        """Initialize document not found error.
-
-        Args:
-            document_type: Type of document that wasn't found
-            query: Query used to search for the document
-        """
-        message = f"{document_type} not found"
-        super().__init__(
-            message=message,
-            status_code=404,
-            details={"document_type": document_type, "query": query},
-        )
-
-
 # AI Provider Errors
 class ProviderError(ReduseError):
     """Base class for AI provider errors."""
@@ -118,76 +79,3 @@ class RateLimitError(ProviderError):
         self.retry_after = retry_after or 0
 
         super().__init__(message=message, status_code=429, details=details)
-
-
-class ProviderResponseError(ProviderError):
-    """Error in AI provider response."""
-
-    pass
-
-
-# Scraper Errors
-class ScraperError(ReduseError):
-    """Base class for scraper errors."""
-
-    pass
-
-
-class BlockedError(ScraperError):
-    """Scraper access blocked."""
-
-    pass
-
-
-class ParseError(ScraperError):
-    """Error parsing scraped content."""
-
-    pass
-
-
-# Validation Errors
-class ValidationError(ReduseError):
-    """Base class for validation errors."""
-
-    def __init__(self, field: str, message: str):
-        """Initialize validation error.
-
-        Args:
-            field: Name of the field that failed validation
-            message: Validation error message
-        """
-        super().__init__(message=message, status_code=422, details={"field": field})
-
-
-# Function to convert standard exceptions to application exceptions
-def convert_exception(
-    exception: Exception, default_error_class: Type[ReduseError] = ReduseError
-) -> ReduseError:
-    """Convert a standard exception to an application exception.
-
-    Args:
-        exception: The original exception
-        default_error_class: Default error class to use
-
-    Returns:
-        ReduseError: Application-specific error
-    """
-    if isinstance(exception, ReduseError):
-        return exception
-
-    message = str(exception)
-    error_class = default_error_class
-
-    # Attempt to map common exceptions to appropriate error types
-    if isinstance(exception, (ConnectionRefusedError, TimeoutError)):
-        error_class = ConnectionError
-    elif isinstance(exception, KeyError):
-        error_class = ValidationError
-        return ValidationError(
-            field=str(exception), message=f"Missing required field: {exception}"
-        )
-    elif isinstance(exception, ValueError):
-        error_class = ValidationError
-        return ValidationError(field="value", message=message)
-
-    return error_class(message=message)

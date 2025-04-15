@@ -1,12 +1,10 @@
 from datetime import datetime
-from decimal import Decimal
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Tuple
 
 from beanie import Document
-from bson import Decimal128
 from bson import ObjectId as BaseObjectId
 from bson.errors import InvalidId
-from pydantic import Field, field_validator
+from pydantic import Field
 from pydantic_core import core_schema
 from pydantic_core.core_schema import ValidationInfo
 
@@ -64,25 +62,16 @@ class ModelPriceStats(Document):
     """Document for storing model price statistics."""
 
     base_model: str
-    avg_price: Decimal
-    min_price: Decimal
-    max_price: Decimal
-    median_price: Decimal
+    avg_price: float
+    min_price: float
+    max_price: float
+    median_price: float
     sample_size: int
     timestamp: datetime = Field(default_factory=datetime.utcnow)
     variants: List[str] = Field(
         default_factory=list,
         description="List of model variants included in this group",
     )
-
-    @field_validator(
-        "avg_price", "min_price", "max_price", "median_price", mode="before"
-    )
-    @classmethod
-    def convert_decimal(cls, v: Optional[Decimal128]) -> Optional[Decimal]:
-        if isinstance(v, Decimal128):
-            return Decimal(str(v))
-        return v
 
     class Settings:
         name = "model_price_stats"

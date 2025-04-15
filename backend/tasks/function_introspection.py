@@ -1,11 +1,12 @@
 """Handles function introspection"""
 
+import fnmatch
 import importlib
 import inspect
 import logging
 import os
 import pkgutil
-from typing import Any, Callable, Dict, Optional, Union, get_type_hints
+from typing import Any, Callable, Dict, List, Optional, Union, get_type_hints
 
 from pydantic import BaseModel
 
@@ -75,7 +76,9 @@ class FunctionDiscovery:
             return "Any"
 
     def discover_functions(
-        self, package_path: Optional[str] = None
+        self,
+        package_path: Optional[str] = None,
+        exclude_patterns: Optional[List[str]] = None,
     ) -> Dict[str, FunctionInfo]:
         """Discover all functions in the given package path.
 
@@ -84,6 +87,8 @@ class FunctionDiscovery:
                 Can be either:
                 - A dot-separated Python package path (e.g. "backend.services")
                 - A relative path starting with "." (e.g. "." for current package)
+            exclude_patterns: A list of glob patterns for package/module paths to exclude
+                              (e.g., ["backend.services.crawler.*", "backend.tests.*"]).
         """
         # Use the root_module if no package_path is provided
         if package_path is None:
@@ -174,8 +179,14 @@ class FunctionDiscovery:
                     except Exception as e:
                         logger.debug(f"Error processing function {name}: {str(e)}")
 
-        def explore_package(package_name: str):
+        def explore_package(
+            package_name: str, exclude_patterns: Optional[List[str]] = None
+        ):
             try:
+                # Check exclusion before doing anything else
+                if should_exclude(package_name):
+                    return
+
                 # Handle relative imports
                 if package_name.startswith("."):
                     # Get the parent package name from the caller's frame
@@ -202,7 +213,9 @@ class FunctionDiscovery:
                     if hasattr(package, "__path__"):
                         for _, name, is_pkg in pkgutil.iter_modules(package.__path__):
                             full_name = f"{package_name}.{name}"
-                            explore_package(full_name)
+                            # Pass exclude_patterns down and check exclusion before recursing
+                            if not should_exclude(full_name):
+                                explore_package(full_name, exclude_patterns)
                 except ValueError as ve:
                     # This handles Pydantic validation errors that might occur during imports
                     if "validation error" in str(ve).lower():
@@ -224,6 +237,18 @@ class FunctionDiscovery:
                 if "current_frame" in locals():
                     del current_frame
 
+        def should_exclude(module_name: str) -> bool:
+            """Check if a module name matches any exclude pattern."""
+            if not exclude_patterns:
+                return False
+            for pattern in exclude_patterns:
+                if fnmatch.fnmatch(module_name, pattern):
+                    logger.debug(
+                        f"Excluding module {module_name} due to pattern: {pattern}"
+                    )
+                    return True
+            return False
+
         explore_package(package_path)
         logger.info(
             f"Discovered {len(self.discovered_functions)} functions in {package_path}"
@@ -231,16 +256,17 @@ class FunctionDiscovery:
         return self.discovered_functions
 
     def get_function_info(self, full_path: str) -> Optional[FunctionInfo]:
-        """Get information about a discovered function."""
-        if not self.discovered_functions:
-            self.discover_functions()
+        """Get information about a previously discovered function.
+
+        Note: `discover_functions` must be called before using this method.
+        """
         return self.discovered_functions.get(full_path)
 
     def list_functions(self) -> Dict[str, FunctionInfo]:
-        """List all discovered functions."""
-        # If no functions have been discovered yet, discover them now
-        if not self.discovered_functions:
-            self.discover_functions()
+        """List all discovered functions.
+
+        Note: `discover_functions` must be called before using this method.
+        """
         return self.discovered_functions
 
     def create_task_from_function(self, full_path: str) -> Optional[Callable]:

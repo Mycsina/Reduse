@@ -1,14 +1,12 @@
 """Schema for product listings."""
 
 import logging
-from decimal import Decimal
+from datetime import datetime
 from enum import Enum
 from typing import Annotated, List, Optional
 
-from beanie import Document, Indexed
-from pydantic import BaseModel, HttpUrl, field_validator
-
-from ..utils.utils import _to_decimal
+from beanie import Document, Indexed, PydanticObjectId
+from pydantic import BaseModel, HttpUrl
 
 logger = logging.getLogger(__name__)
 
@@ -18,13 +16,6 @@ class AnalysisStatus(str, Enum):
     IN_PROGRESS = "in_progress"
     COMPLETED = "completed"
     FAILED = "failed"
-
-
-class OriginalId(BaseModel):
-    """Schema for original IDs."""
-
-    original_id: str
-    site: str
 
 
 class ListingDocument(Document):
@@ -40,37 +31,23 @@ class ListingDocument(Document):
     original_id: Annotated[str, Indexed(unique=True)]
     site: Annotated[str, Indexed()]  # 'olx' or external site name
     title: str
-    link: HttpUrl
     price_str: str  # Original price string
-    price_value: Annotated[Optional[Decimal], Indexed()]  # Normalized price value
+    price_value: Annotated[Optional[float], Indexed()]  # Normalized price value
 
     # Photos
     photo_urls: List[HttpUrl] = []
 
     # Details (populated when fetching full listing)
-    description: Optional[str]
+    description: Optional[str] = None
+    parameters: Optional[dict[str, str]] = None
+    link: Optional[HttpUrl] = None
 
     # Status flags
     more: bool = True  # Whether there are more details to fetch
     analysis_status: Annotated[AnalysisStatus, Indexed()] = AnalysisStatus.PENDING
     analysis_error: Optional[str] = None
     retry_count: Annotated[int, Indexed()] = 0
-
-    # Compound index for analysis status and retry count
-    analysis_status_retry_count: Annotated[None, Indexed()] = None
-
-    # Add compound index for common analytics queries
-    analysis_status_price: Annotated[None, Indexed()] = None
-    site_timestamp: Annotated[None, Indexed()] = None
-
-    @field_validator("price_value", mode="before")
-    @classmethod
-    def _to_decimal(cls, v):
-        if isinstance(v, Decimal):
-            return v
-        if v is None:
-            return None
-        return _to_decimal(v)
+    timestamp: Annotated[datetime, Indexed()] = datetime.now()
 
     class Settings:
         name = "listings"
@@ -83,8 +60,8 @@ class ListingDocument(Document):
         ]
 
 
-async def save_listings(listings: List[ListingDocument]) -> None:
-    """Save listings to the database. Only deletes existing listings if they have identical content."""
+async def save_listings(listings: List[ListingDocument]):
+    """Save listings to the database. Deletes existing listings if they have identical content."""
     # Deduplicate incoming listings by original_id
     dedup_listings = {listing.original_id: listing for listing in listings}
     listings = list(dedup_listings.values())

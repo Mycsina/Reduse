@@ -50,7 +50,6 @@ class GoogleAIProvider(BaseProvider):
 
         except exceptions.ResourceExhausted as e:
             # Google's API returns 429 as ResourceExhausted
-            # Default to 60s retry if no retry info provided
             raise RateLimitError(str(e), retry_after=60.0)
         except Exception as e:
             raise ProviderError(f"Google error: {str(e)}") from e

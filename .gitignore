@@ -5,3 +5,4 @@
 logs/
 **/.next/**
 **/node_modules/**
+**/storage
