@@ -39,4 +39,15 @@ export interface ModelAnalytics {
   avgPrice: number;
   minPrice: number;
   maxPrice: number;
+}
+
+export interface FilterCondition {
+  field: string;
+  operator: string;
+  value: string;
+}
+
+export interface FilterGroup {
+  type: "AND" | "OR";
+  conditions: (FilterCondition | FilterGroup)[];
 } 

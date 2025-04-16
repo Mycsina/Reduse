@@ -100,6 +100,13 @@ class FunctionDiscovery:
         def explore_module(module):
             for name, obj in inspect.getmembers(module):
                 if inspect.isfunction(obj) and not name.startswith("_"):
+                    # Check if the function is defined in the current module
+                    if getattr(obj, "__module__", None) != module.__name__:
+                        logger.debug(
+                            f"Skipping imported function: {module.__name__}.{name}"
+                        )
+                        continue
+
                     try:
                         # Get the absolute file path of the function's source code
                         try:

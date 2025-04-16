@@ -10,6 +10,7 @@ from .config import settings
 from .schemas.analysis import AnalyzedListingDocument
 from .schemas.batch import BatchJobDocument
 from .schemas.listings import ListingDocument
+from .schemas.bug_reports import BugReportDocument
 
 logger = logging.getLogger(__name__)
 
@@ -18,14 +19,7 @@ async def init_db() -> None:
     """Initialize the database connection and document models."""
     logger.info(f"Connecting to MongoDB: {settings.database.uri}")
 
-    # Configure connection with improved pool settings
-    client_settings = {
-        "maxPoolSize": settings.database.max_pool_size,
-        "minPoolSize": settings.database.min_pool_size,
-        "maxIdleTimeMS": settings.database.max_idle_time_ms,
-    }
-
-    client = AsyncIOMotorClient(settings.database.uri, **client_settings)
+    client = AsyncIOMotorClient(settings.database.uri)
 
     logger.info(f"Initializing Beanie with database: {settings.database.database_name}")
 
@@ -34,6 +28,7 @@ async def init_db() -> None:
         ListingDocument,
         AnalyzedListingDocument,
         BatchJobDocument,
+        BugReportDocument,
     ]
 
     try:

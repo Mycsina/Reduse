@@ -17,6 +17,7 @@ from .routers.analytics import router as analytics_router
 from .routers.query import router as query_router
 from .routers.scrape import router as scrape_router
 from .routers.tasks import router as tasks_router
+from .routers.bug_reports import router as bug_reports_router
 from .tasks.function_introspection import introspect
 from .tasks.scheduler import start_scheduler
 from .utils.logging_config import EndpointLoggingRoute, RequestLoggingMiddleware, setup_endpoint_logging, setup_logging
@@ -81,6 +82,7 @@ app.include_router(analytics_router)
 app.include_router(query_router)
 app.include_router(tasks_router)
 app.include_router(scrape_router)
+app.include_router(bug_reports_router)
 
 add_mcp_server(
     app,                    # Your FastAPI app

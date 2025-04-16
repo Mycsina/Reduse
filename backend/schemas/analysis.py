@@ -46,7 +46,7 @@ class AnalyzedListingDocument(Document):
     embeddings: Annotated[List[float] | None, Indexed(index_type=GEOSPHERE)] = None  # type: ignore # noqa: E501
 
     # Analysis metadata
-    analysis_version: str  # Version of the analysis prompt/model used
+    analysis_version: str = "1.0"
     retry_count: Annotated[int, Indexed()] = 0  # Number of failed analysis attempts
 
     class Settings:

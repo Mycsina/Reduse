@@ -38,9 +38,6 @@ class DatabaseSettings(BaseSettings):
     atlas_user: str = Field(validation_alias="ATLAS_USER")
     atlas_password: SecretStr = Field(..., validation_alias="ATLAS_PASSWORD")
     database_name: str = Field(default="Vroom")
-    max_pool_size: int = Field(default=10)
-    min_pool_size: int = Field(default=1)
-    max_idle_time_ms: int = Field(default=30000)
 
     @property
     def uri(self) -> str:
@@ -68,6 +65,10 @@ class AISettings(BaseSettings):
     default_model: str = Field(default="gemma-3-27b-it", validation_alias="AI_DEFAULT_MODEL")
     google_project_id: str = Field(default="", validation_alias="GOOGLE_PROJECT_ID")
     google_location: str = Field(default="us-central1", validation_alias="GOOGLE_LOCATION")
+
+    # Concurrency settings
+    analysis_max_concurrent: int = Field(default=10, validation_alias="AI_ANALYSIS_MAX_CONCURRENT")
+    embedding_max_concurrent: int = Field(default=10, validation_alias="AI_EMBEDDING_MAX_CONCURRENT")
 
     model_config = SettingsConfigDict(env_file=".env", extra="allow")
 

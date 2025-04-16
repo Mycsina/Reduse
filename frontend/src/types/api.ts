@@ -1,34 +1,145 @@
-/* tslint:disable */
 /* eslint-disable */
-/**
-/* This file was automatically generated from pydantic models by running pydantic2ts.
-/* Do not modify it by hand - just update the pydantic models and then re-run the script
-*/
+
+// --- Enums --- //
 
 /**
  * Type of filter group.
  */
 export type FilterGroupType = "AND" | "OR";
-export type AnalysisStatus1 = "pending" | "in_progress" | "completed" | "failed";
 
 /**
- * Schedule configuration for analysis tasks.
+ * Operator for filter conditions.
  */
-export interface AnalysisSchedule {
-  /**
-   * Optional job ID. If not provided, one will be generated.
-   */
-  job_id?: string | null;
-  cron?: string | null;
-  interval_seconds?: number | null;
-  start_date?: string | null;
-  end_date?: string | null;
-  enabled?: boolean;
-  max_instances?: number;
-  retry_failed?: boolean;
-  reanalyze_all?: boolean;
-  regenerate_embeddings?: boolean;
+export type OperatorType =
+  | "EQUALS"
+  | "CONTAINS"
+  | "REGEX"
+  | "GT"
+  | "LT"
+  | "GTE"
+  | "LTE"
+  | "EQ_NUM";
+
+/**
+ * Status of listing analysis (used in ListingDocument).
+ */
+export type ListingAnalysisStatusType = "pending" | "in_progress" | "completed" | "failed";
+
+/**
+ * Status of a bug report.
+ */
+export enum BugReportStatus {
+  OPEN = "open",
+  REVIEWED = "reviewed",
+  RESOLVED = "resolved",
+  INVALID = "invalid",
 }
+
+/**
+ * Type of bug report.
+ */
+export enum BugReportType {
+  INCORRECT_DATA = "incorrect_data",
+  MISSING_DATA = "missing_data",
+  WRONG_ANALYSIS = "wrong_analysis",
+  DUPLICATE_LISTING = "duplicate_listing", // Added based on user request, check if backend supports
+  OTHER = "other",
+}
+
+
+// --- Query & Filtering --- //
+
+/**
+ * Price filter model.
+ */
+export interface PriceFilter {
+  min?: number | null;
+  max?: number | null;
+}
+
+/**
+ * Model for a single filter condition.
+ */
+export interface FilterCondition {
+  field: string;
+  operator: OperatorType; // Use OperatorType enum
+  value: string;         // Changed from pattern
+}
+
+/**
+ * Model for a group of filter conditions.
+ */
+export interface FilterGroup {
+  type: FilterGroupType;
+  conditions: (FilterCondition | FilterGroup)[];
+}
+
+/**
+ * Query model for standard listing queries.
+ */
+export interface ListingQuery {
+  price?: PriceFilter | null;
+  search_text?: string | null;
+  filter?: FilterGroup | null;
+  skip?: number;
+  limit?: number;
+}
+
+// --- Listings & Analysis --- //
+
+/**
+ * Schema for product listings (as received by frontend).
+ */
+export interface ListingDocument {
+  _id?: string | null; // Beanie/Mongo ID
+  original_id: string;
+  site: string;
+  title: string;
+  link?: string | null; // Was HttpUrl, now string
+  price_str: string;
+  price_value: number | null; // Corrected from string
+  photo_urls?: string[];     // Was List[HttpUrl]
+  description?: string | null;
+  more?: boolean;
+  analysis_status?: ListingAnalysisStatusType;
+  analysis_error?: string | null;
+  retry_count?: number;
+  timestamp?: string; // Add timestamp if needed from backend
+  // parameters?: Record<string, string> | null; // If used from backend schema
+  // created_at?: string; // If needed
+  // updated_at?: string; // If needed
+}
+
+/**
+ * Schema for analyzed listings (as received by frontend).
+ */
+export interface AnalyzedListingDocument {
+  _id?: string | null; // Beanie/Mongo ID
+  // parsed_listing_id: string | null; // Seems unused in client/routers
+  original_listing_id: string;
+  type?: string | null;
+  brand?: string | null;
+  base_model?: string | null;
+  model_variant?: string | null;
+  info?: Record<string, any>; // Changed from unknown
+  embeddings?: number[] | null;
+  analysis_version?: string;
+  retry_count?: number;
+  // created_at?: string; // If needed
+  // updated_at?: string; // If needed
+}
+
+/**
+ * Response model for listing queries.
+ */
+export interface ListingResponse {
+  listing: ListingDocument;
+  analysis: AnalyzedListingDocument | null;
+}
+
+/**
+ * Overall analysis status summary.
+ */
 export interface AnalysisStatus {
   total: number;
   completed: number;
@@ -38,6 +149,10 @@ export interface AnalysisStatus {
   max_retries_reached: number;
   can_process?: boolean;
 }
+
+/**
+ * Response for analysis status-changing actions.
+ */
 export interface AnalysisStatusResponse {
   message: string;
   can_retry?: boolean | null;
@@ -50,37 +165,63 @@ export interface AnalysisStatusResponse {
   in_progress?: number | null;
   max_retries_reached?: number | null;
 }
+
 /**
- * Schema for analyzed listings.
- *
- * This schema stores the results of product analysis, including:
- * 1. Core product identification (type, brand, base model, variant)
- * 2. Additional product information (specs, condition, etc.)
- * 3. Analysis metadata (version, retry count)
- * 4. Vector embeddings for similarity search
+ * Response for cancelling analysis.
  */
-export interface AnalyzedListingDocument {
-  /**
-   * MongoDB document ObjectID
-   */
-  _id?: string | null;
-  parsed_listing_id: string | null;
-  original_listing_id: string;
-  type?: string | null;
-  brand?: string | null;
-  base_model?: string | null;
-  model_variant?: string | null;
-  info?: {
-    [k: string]: unknown;
-  };
-  embeddings?: number[] | null;
-  analysis_version: string;
-  retry_count?: number;
-}
 export interface CancelAnalysisResponse {
   message: string;
   cancelled: number;
 }
+
+
+// --- Analytics --- //
+
+/**
+ * Document for storing model price statistics.
+ */
+export interface ModelPriceStats {
+  _id?: string | null; // Beanie/Mongo ID
+  base_model: string;
+  avg_price: string; // Stored as string in backend schema
+  min_price: string; // Stored as string in backend schema
+  max_price: string; // Stored as string in backend schema
+  median_price: string; // Stored as string in backend schema
+  sample_size: number;
+  timestamp?: string; // Changed from datetime
+  variants?: string[];
+}
+
+/**
+ * Response model for update stats endpoint.
+ */
+export interface UpdateStatsResponse {
+  message: string;
+}
+
+/**
+ * Response model for getting available filter fields.
+ */
+export interface InfoFieldsResponse {
+  main_fields: string[];
+  info_fields: string[];
+}
+
+
+// --- Tasks & Scheduling --- //
+
+/**
+ * Base configuration for scheduled tasks.
+ */
+export interface TaskConfig {
+  job_id?: string | null;
+  cron?: string | null;
+  interval_seconds?: number | null;
+  max_instances?: number;
+  enabled?: boolean;
+  parameters?: Record<string, any>;
+}
+
 /**
  * Request model for creating a task from a function.
  */
@@ -88,26 +229,15 @@ export interface CreateTaskRequest {
   function_path: string;
   config: TaskConfig;
 }
+
 /**
- * Base configuration for scheduled tasks.
+ * Request model for running a function once.
  */
-export interface TaskConfig {
-  /**
-   * Optional job ID. If not provided, one will be generated.
-   */
-  job_id?: string | null;
-  cron?: string | null;
-  interval_seconds?: number | null;
-  max_instances?: number;
-  enabled?: boolean;
-  /**
-   * Parameters to pass to the task function
-   */
-  parameters?: {
-    [k: string]: unknown;
-  };
-  [k: string]: unknown;
+export interface RunFunctionRequest {
+  function_path: string;
+  parameters?: Record<string, any> | null;
 }
+
 /**
  * Information about a discovered function.
  */
@@ -117,218 +247,19 @@ export interface FunctionInfo {
   full_path: string;
   doc: string | null;
   is_async: boolean;
-  parameters: {
-    [k: string]: {
-      [k: string]: unknown;
-    };
-  };
+  parameters: Record<string, Record<string, any>>;
   return_type: string | null;
 }
-export interface InfoFieldsResponse {
-  main_fields: string[];
-  info_fields: string[];
-}
-/**
- * Status of a running job.
- */
-export interface JobStatus {
-  job_id: string;
-  status: string;
-  result?: unknown;
-  error?: string | null;
-}
-/**
- * Query model for standard listing queries.
- */
-export interface ListingQuery {
-  price?: PriceFilter | null;
-  search_text?: string | null;
-  filter?: FilterGroup | null;
-  skip?: number;
-  limit?: number;
-}
-/**
- * Price filter model.
- */
-export interface PriceFilter {
-  min?: number | null;
-  max?: number | null;
-  [k: string]: unknown;
-}
-/**
- * Model for a group of filter conditions.
- */
-export interface FilterGroup {
-  type: FilterGroupType;
-  conditions: (FilterCondition | FilterGroup)[];
-  [k: string]: unknown;
-}
-/**
- * Model for a single filter condition.
- */
-export interface FilterCondition {
-  field: string;
-  pattern: string;
-  [k: string]: unknown;
-}
-/**
- * Response model for listing queries.
- */
-export interface ListingResponse {
-  listing: ListingDocument;
-  analysis: AnalyzedListingDocument | null;
-}
-/**
- * Schema for product listings.
- *
- * This schema stores the raw listing data as scraped from various sources.
- * Fields are populated in two stages:
- * 1. Basic info from listing cards (always populated)
- * 2. Details (description, location) from individual listing pages (optional)
- */
-export interface ListingDocument {
-  /**
-   * MongoDB document ObjectID
-   */
-  _id?: string | null;
-  original_id: string;
-  site: string;
-  title: string;
-  link: string;
-  price_str: string;
-  price_value: string | null;
-  photo_urls?: string[];
-  description: string | null;
-  more?: boolean;
-  analysis_status?: AnalysisStatus1;
-  analysis_error?: string | null;
-  retry_count?: number;
-  analysis_status_retry_count?: null;
-  analysis_status_price?: null;
-  site_timestamp?: null;
-  [k: string]: unknown;
-}
-/**
- * Schedule configuration for maintenance tasks.
- */
-export interface MaintenanceSchedule {
-  /**
-   * Optional job ID. If not provided, one will be generated.
-   */
-  job_id?: string | null;
-  cron?: string | null;
-  interval_seconds?: number | null;
-  start_date?: string | null;
-  end_date?: string | null;
-  enabled?: boolean;
-  max_instances?: number;
-  cleanup_old_logs?: boolean;
-  vacuum_database?: boolean;
-  update_indexes?: boolean;
-}
-/**
- * Document for storing model price statistics.
- */
-export interface ModelPriceStats {
-  /**
-   * MongoDB document ObjectID
-   */
-  _id?: string | null;
-  base_model: string;
-  avg_price: string;
-  min_price: string;
-  max_price: string;
-  median_price: string;
-  sample_size: number;
-  timestamp?: string;
-  /**
-   * List of model variants included in this group
-   */
-  variants?: string[];
-}
-/**
- * Schedule configuration for OLX category scraping tasks.
- */
-export interface OLXScrapeSchedule {
-  /**
-   * Optional job ID. If not provided, one will be generated.
-   */
-  job_id?: string | null;
-  cron?: string | null;
-  interval_seconds?: number | null;
-  start_date?: string | null;
-  end_date?: string | null;
-  enabled?: boolean;
-  max_instances?: number;
-  analyze?: boolean;
-  generate_embeddings?: boolean;
-  categories?: string[] | null;
-}
-/**
- * Response model for endpoints that start a background task.
- */
-export interface QueuedTaskResponse {
-  message: string;
-  queue_id: string;
-}
-/**
- * Request model for running a function once.
- */
-export interface RunFunctionRequest {
-  function_path: string;
-  parameters?: {
-    [k: string]: unknown;
-  } | null;
-}
-/**
- * Base model for schedule configuration.
- */
-export interface ScheduleBase {
-  /**
-   * Optional job ID. If not provided, one will be generated.
-   */
-  job_id?: string | null;
-  cron?: string | null;
-  interval_seconds?: number | null;
-  start_date?: string | null;
-  end_date?: string | null;
-  enabled?: boolean;
-  max_instances?: number;
-}
+
 /**
  * Response model for scheduling endpoints.
  */
 export interface ScheduleResponse {
   message: string;
   job_id: string;
-  config: {
-    [k: string]: unknown;
-  };
+  config: Record<string, any>;
 }
-/**
- * Request model for scraping a URL.
- */
-export interface ScrapeRequest {
-  url: string;
-}
-/**
- * Schedule configuration for URL-based scraping tasks.
- */
-export interface ScrapeSchedule {
-  /**
-   * Optional job ID. If not provided, one will be generated.
-   */
-  job_id?: string | null;
-  cron?: string | null;
-  interval_seconds?: number | null;
-  start_date?: string | null;
-  end_date?: string | null;
-  enabled?: boolean;
-  max_instances?: number;
-  urls: string[];
-  analyze?: boolean;
-  generate_embeddings?: boolean;
-}
+
 /**
  * Simple response for job operations.
  */
@@ -336,9 +267,49 @@ export interface SimpleJobResponse {
   message: string;
   job_id: string;
 }
+
 /**
- * Response model for update stats endpoint.
+ * Response model for endpoints that start a background task.
  */
-export interface UpdateStatsResponse {
+export interface QueuedTaskResponse {
   message: string;
+  queue_id: string;
+}
+
+/**
+ * Status of a running job.
+ */
+export interface JobStatus {
+  job_id: string;
+  status: string; // e.g., 'running', 'completed', 'failed'
+  result?: any;   // Changed from unknown
+  error?: string | null;
+}
+
+
+// --- Bug Reports --- //
+
+/**
+ * Schema for creating a bug report.
+ */
+export interface BugReportCreate {
+  listing_id: string;
+  original_id: string;
+  site: string;
+  report_type: BugReportType;
+  description: string;
+  incorrect_fields?: Record<string, any> | null;
+  expected_values?: Record<string, any> | null;
+}
+
+/**
+ * Response schema for bug reports.
+ */
+export interface BugReportResponse {
+  id: string;
+  listing_id: string;
+  report_type: BugReportType;
+  description: string;
+  status: BugReportStatus;
+  timestamp: string; // Changed from datetime
 }

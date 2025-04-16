@@ -38,7 +38,7 @@ import {
 import { Check, ChevronsUpDown, Plus, Trash2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { debounce } from "lodash";
-import { useVirtualizer } from "@tanstack/react-virtual";
+import { useVirtualizer, type Virtualizer } from "@tanstack/react-virtual";
 import ReactDOM from "react-dom";
 
 interface AdvancedFilterProps {
@@ -56,7 +56,7 @@ const VirtualizedItems = memo(function VirtualizedItems({
 }) {
   const parentRef = useRef<HTMLDivElement>(null);
 
-  const rowVirtualizer = useVirtualizer({
+  const rowVirtualizer: Virtualizer<HTMLDivElement, Element> = useVirtualizer({
     count: items.length,
     getScrollElement: () => parentRef.current,
     estimateSize: useCallback(() => 36, []),
@@ -137,18 +137,22 @@ function getMatchScore(str: string, search: string): number {
 }
 
 function ConditionComponent({
-  condition,
+  initialCondition,
   onUpdate,
   onDelete,
   level = 0,
 }: {
-  condition: FilterCondition;
+  initialCondition: FilterCondition;
   onUpdate: (updated: FilterCondition) => void;
   onDelete: () => void;
   level?: number;
 }) {
   const [open, setOpen] = useState(false);
-  const [value, setValue] = useState(condition.field);
+  const [fieldValue, setFieldValue] = useState(initialCondition.field);
+  const [operatorValue, setOperatorValue] = useState(
+    initialCondition.operator || "CONTAINS"
+  );
+  const [textValue, setTextValue] = useState(initialCondition.value);
   const [search, setSearch] = useState("");
 
   // Use React Query with better caching
@@ -161,8 +165,14 @@ function ConditionComponent({
 
   // Update local state when condition changes
   useEffect(() => {
-    setValue(condition.field);
-  }, [condition.field]);
+    setFieldValue(initialCondition.field);
+    setOperatorValue(initialCondition.operator || "CONTAINS");
+    setTextValue(initialCondition.value);
+  }, [
+    initialCondition.field,
+    initialCondition.operator,
+    initialCondition.value,
+  ]);
 
   // Memoize the available fields with useMemo
   const availableFields = useMemo(() => {
@@ -190,18 +200,26 @@ function ConditionComponent({
   // Debounce search updates
   const debouncedSetSearch = useCallback(
     debounce((value: string) => {
-      setSearch(value);
+      setSearch(value.toLowerCase());
     }, 150),
     []
   );
 
-  const handleSelect = useCallback(
+  const handleSelectField = useCallback(
     (currentValue: string) => {
-      setValue(currentValue);
+      // Defer state update to avoid flushSync during render
+      queueMicrotask(() => {
+        setFieldValue(currentValue);
+        onUpdate({
+          field: currentValue,
+          operator: operatorValue as FilterCondition["operator"], // Ensure type safety
+          value: textValue,
+        });
+      });
+      // Close the popover immediately
       setOpen(false);
-      onUpdate({ ...condition, field: currentValue });
     },
-    [condition, onUpdate]
+    [onUpdate, operatorValue, textValue] // setOpen is stable, no need to add
   );
 
   const handleKeyDown = useCallback(
@@ -210,11 +228,35 @@ function ConditionComponent({
         e.preventDefault();
         if (search && filteredFields.length > 0) {
           const firstMatch = filteredFields[0];
-          handleSelect(firstMatch);
+          handleSelectField(firstMatch);
         }
       }
     },
-    [search, filteredFields, handleSelect]
+    [search, filteredFields, handleSelectField]
+  );
+
+  const handleOperatorChange = useCallback(
+    (newOperator: string) => {
+      setOperatorValue(newOperator);
+      onUpdate({
+        field: fieldValue,
+        operator: newOperator as FilterCondition["operator"],
+        value: textValue,
+      });
+    },
+    [fieldValue, onUpdate, textValue]
+  );
+
+  const handleValueChange = useCallback(
+    (newValue: string) => {
+      setTextValue(newValue);
+      onUpdate({
+        field: fieldValue,
+        operator: operatorValue as FilterCondition["operator"],
+        value: newValue,
+      });
+    },
+    [fieldValue, onUpdate, operatorValue]
   );
 
   return (
@@ -233,8 +275,8 @@ function ConditionComponent({
           >
             {isLoading
               ? "Loading fields..."
-              : value
-              ? value
+              : fieldValue
+              ? fieldValue
               : "Select field..."}
             <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
           </Button>
@@ -252,16 +294,31 @@ function ConditionComponent({
             />
             <VirtualizedCommandList
               items={filteredFields}
-              value={value}
-              onSelect={handleSelect}
+              value={fieldValue}
+              onSelect={handleSelectField}
             />
           </Command>
         </PopoverContent>
       </Popover>
+      <Select value={operatorValue} onValueChange={handleOperatorChange}>
+        <SelectTrigger className="w-[120px]">
+          <SelectValue placeholder="Operator" />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value="CONTAINS">Contains</SelectItem>
+          <SelectItem value="EQUALS">Equals (Text)</SelectItem>
+          <SelectItem value="REGEX">Regex</SelectItem>
+          <SelectItem value="EQ_NUM">Equals (Num)</SelectItem>
+          <SelectItem value="GT">{`>`}</SelectItem>
+          <SelectItem value="LT">{`<`}</SelectItem>
+          <SelectItem value="GTE">{`>=`}</SelectItem>
+          <SelectItem value="LTE">{`<=`}</SelectItem>
+        </SelectContent>
+      </Select>
       <Input
-        placeholder="Regex pattern..."
-        value={condition.pattern}
-        onChange={(e) => onUpdate({ ...condition, pattern: e.target.value })}
+        placeholder="Value..."
+        value={textValue}
+        onChange={(e) => handleValueChange(e.target.value)}
         onKeyDown={(e) => {
           if (e.key === "Enter") {
             e.preventDefault();
@@ -291,7 +348,10 @@ function GroupComponent({
   const addCondition = () => {
     onUpdate({
       ...group,
-      conditions: [...group.conditions, { field: "", pattern: "" }],
+      conditions: [
+        ...group.conditions,
+        { field: "", operator: "CONTAINS", value: "" },
+      ],
     });
   };
 
@@ -361,7 +421,7 @@ function GroupComponent({
               />
             ) : (
               <ConditionComponent
-                condition={condition as FilterCondition}
+                initialCondition={condition as FilterCondition}
                 onUpdate={(updated) => updateCondition(index, updated)}
                 onDelete={() => deleteCondition(index)}
                 level={level + 1}
@@ -397,8 +457,12 @@ export default function AdvancedFilter({
 
   const handleFilterChange = useCallback(
     (updated: FilterGroup) => {
-      setFilter(updated);
-      onFilterChange(updated.conditions.length > 0 ? updated : null);
+      if ("type" in updated) {
+        setFilter(updated);
+        onFilterChange(updated.conditions.length > 0 ? updated : null);
+      } else {
+        console.warn("Direct condition update received at top level, filter not applied.");
+      }
     },
     [onFilterChange]
   );
@@ -422,6 +486,7 @@ export default function AdvancedFilter({
         group={filter}
         onUpdate={handleFilterChange}
         onDelete={() => {}}
+        level={0}
       />
     </div>
   );

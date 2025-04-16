@@ -11,7 +11,8 @@ import {
   UpdateStatsResponse,
   ListingQuery,
   FunctionInfo,
-  JobStatus
+  JobStatus,
+  BugReportCreate
 } from "../types/api";
 
 // Local interface definitions for types that may not be exported from api.ts
@@ -43,7 +44,9 @@ class APIClient {
     analytics: '/analytics',
     tasks: '/tasks',
     schedule: '/tasks/schedule',
-    functions: '/tasks/functions'
+    functions: '/tasks/functions',
+    bugReports: '/bug-reports',
+    admin: '/admin'
   };
 
   constructor() {
@@ -124,7 +127,15 @@ class APIClient {
   }
 
   async updatePriceStats(): Promise<UpdateStatsResponse> {
-    return this.fetch(`${this.endpoints.analytics}/update-stats`, { method: 'POST' });
+    return this.fetch(`${this.endpoints.admin}${this.endpoints.analytics}/update-stats`, { method: 'POST' });
+  }
+
+  // Bug report endpoint
+  async createBugReport(report: BugReportCreate): Promise<any> {
+    return this.fetch(`${this.endpoints.bugReports}`, {
+      method: 'POST',
+      body: JSON.stringify(report),
+    });
   }
 
   // Query endpoints

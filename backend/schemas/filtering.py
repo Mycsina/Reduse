@@ -13,11 +13,30 @@ class FilterGroupType(StrEnum):
     OR = "OR"
 
 
+class Operator(StrEnum):
+    """Operators for filter conditions."""
+
+    # String operators
+    EQUALS = "EQUALS"  # Exact match (case-insensitive)
+    CONTAINS = "CONTAINS"  # Contains substring (case-insensitive)
+    REGEX = "REGEX"  # Direct regex pattern
+
+    # Numerical/Date operators (TODO: Add Date support later if needed)
+    GT = "GT"  # Greater than
+    LT = "LT"  # Less than
+    GTE = "GTE"  # Greater than or equal to
+    LTE = "LTE"  # Less than or equal to
+    EQ_NUM = "EQ_NUM"  # Numerical equals
+
+
 class FilterCondition(BaseModel):
     """Model for a single filter condition."""
 
     field: str
-    pattern: str
+    operator: Operator = (
+        Operator.CONTAINS
+    )  # Default to CONTAINS for backward compatibility/ease of use
+    value: str  # Renamed from pattern
 
 
 class FilterGroup(BaseModel):

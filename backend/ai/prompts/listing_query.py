@@ -81,6 +81,10 @@ Query: "Red cars with low mileage from 2018 or newer"
 }}
 
 YOUR RESPONSE (JSON only):
+
+---
+REMINDER: Convert query to structured JSON filter using available fields and the specified format/operators. Output JSON only.
+---
 """
 
         super().__init__(template=template, system_prompt=system_prompt)

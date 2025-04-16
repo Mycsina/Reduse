@@ -1,4 +1,9 @@
-WRITE DETAILS HERE
-
-# Scratchpad
-Listing uniqueness: Determined by the combination of (original_id, site). Deduplication logic must use this composite key.
+Description: 
+-WRITE AND READ DETAILS HERE
++Actively WRITE details discovered during development and READ existing notes for context.
+ 
+ Examples: Project structure, imports etc
+ # Scratchpad
+ Listing uniqueness: Determined by the combination of (original_id, site). Deduplication logic must use this composite key.
++
++Dynamic Analysis Fields: Fields within the `analysis.info` subdocument are dynamic. Querying them requires constructing the MongoDB field path as `analysis.info.<field_name>`, distinct from top-level analysis fields like `analysis.type`. 

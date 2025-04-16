@@ -2,14 +2,16 @@
 
 import logging
 import re
-from decimal import Decimal, DecimalException
+from decimal import \
+    DecimalException  # Keep for exception handling if needed, or remove if float conversion handles all cases
 from typing import Any, Dict, List, Optional, Tuple
 
 from beanie import PydanticObjectId
 from beanie.operators import Or, RegEx
 
 from ..schemas.analysis import AnalyzedListingDocument
-from ..schemas.filtering import FilterCondition, FilterGroup, FilterGroupType
+from ..schemas.filtering import (FilterCondition, FilterGroup, FilterGroupType,
+                                 ListingQuery, Operator)
 from ..schemas.listings import AnalysisStatus, ListingDocument
 
 logger = logging.getLogger(__name__)
@@ -21,14 +23,28 @@ MIN_OCCURRENCE_THRESHOLD = (
 )
 
 
-def build_mongo_query(filter_group: Optional[FilterGroup]) -> Dict[str, Any]:
+# Helper function to attempt numeric conversion
+def _try_convert_numeric(value: str) -> Optional[float | int]:
+    try:
+        # Attempt float conversion first
+        if "." in value or "e" in value.lower():
+            return float(value)
+        # Otherwise, attempt integer conversion
+        else:
+            return int(value)
+    except ValueError:
+        # Return None if conversion fails for both float and int
+        return None
+
+
+def build_mongo_query(
+    filter_group: Optional[FilterGroup], field_prefix: Optional[str] = None
+) -> Dict[str, Any]:
     """Convert filter group to MongoDB query.
 
-    Handles special field types:
-    - price: Converted to Decimal for proper monetary value handling
-    - text fields: Case-insensitive regex with proper escaping
-    - numeric fields: Direct comparison
-    - dates: ISO format
+    Handles operators and attempts type conversion for numerical comparisons.
+    The field_prefix (e.g., 'analysis.') is added when called from within the aggregation pipeline context.
+    Correctly handles dynamic fields within analysis.info.
     """
     if not filter_group:
         return {}
@@ -37,38 +53,108 @@ def build_mongo_query(filter_group: Optional[FilterGroup]) -> Dict[str, Any]:
     for condition in filter_group.conditions:
         if isinstance(condition, FilterCondition):
             field = condition.field
-            pattern = condition.pattern
+            operator = condition.operator
+            value = condition.value
+            mongo_field: str
 
-            # Handle special fields
-            if field == "price_value":
+            # Construct the correct MongoDB field path
+            if field_prefix == "analysis":
+                if field in PROTECTED_FIELDS:
+                    mongo_field = f"analysis.{field}"
+                else:
+                    # Assume any other field in the analysis context is a dynamic info field
+                    mongo_field = f"analysis.info.{field}"
+            elif field == "price_value":  # Handle top-level price field
+                mongo_field = "price_value"
+            elif (
+                field in PROTECTED_FIELDS
+            ):  # Handle top-level analyzed fields (if query is not prefixed)
+                mongo_field = field
+            else:
+                # Assume any other top-level field is an info field (less common scenario)
+                mongo_field = f"info.{field}"
+
+            # Handle different operators
+            condition_query = None
+            numeric_value = _try_convert_numeric(value)
+
+            if operator == Operator.EQUALS:
+                # Case-insensitive exact match for strings
+                condition_query = {
+                    mongo_field: {"$regex": f"^{re.escape(value)}$", "$options": "i"}
+                }
+            elif operator == Operator.CONTAINS:
+                # Case-insensitive substring match
+                condition_query = {
+                    mongo_field: {"$regex": re.escape(value), "$options": "i"}
+                }
+            elif operator == Operator.REGEX:
+                # Direct regex (user provides the pattern)
                 try:
-                    value = Decimal(pattern)
-                    conditions.append({field: value})
-                except (ValueError, DecimalException):
-                    logger.warning(f"Invalid price value: {pattern}")
+                    # Validate regex - basic check
+                    re.compile(value)
+                    condition_query = {
+                        mongo_field: {"$regex": value, "$options": "i"}
+                    }  # Assume case-insensitive for now
+                except re.error as e:
+                    logger.warning(
+                        f"Invalid regex pattern provided: {value} for field {field}. Error: {e}"
+                    )
+                    continue  # Skip this condition
+            elif operator == Operator.EQ_NUM:
+                if numeric_value is not None:
+                    condition_query = {mongo_field: numeric_value}
+                else:
+                    logger.warning(
+                        f"Could not convert value '{value}' to numeric for EQ_NUM operator on field {field}."
+                    )
+                    continue  # Skip if value is not numeric
+            elif operator == Operator.GT:
+                if numeric_value is not None:
+                    condition_query = {mongo_field: {"$gt": numeric_value}}
+                else:
+                    logger.warning(
+                        f"Could not convert value '{value}' to numeric for GT operator on field {field}."
+                    )
+                    continue
+            elif operator == Operator.LT:
+                if numeric_value is not None:
+                    condition_query = {mongo_field: {"$lt": numeric_value}}
+                else:
+                    logger.warning(
+                        f"Could not convert value '{value}' to numeric for LT operator on field {field}."
+                    )
+                    continue
+            elif operator == Operator.GTE:
+                if numeric_value is not None:
+                    condition_query = {mongo_field: {"$gte": numeric_value}}
+                else:
+                    logger.warning(
+                        f"Could not convert value '{value}' to numeric for GTE operator on field {field}."
+                    )
+                    continue
+            elif operator == Operator.LTE:
+                if numeric_value is not None:
+                    condition_query = {mongo_field: {"$lte": numeric_value}}
+                else:
+                    logger.warning(
+                        f"Could not convert value '{value}' to numeric for LTE operator on field {field}."
+                    )
                     continue
 
-            # Handle analyzed fields
-            elif field in ["type", "brand", "base_model", "model_variant"]:
-                conditions.append(
-                    {field: {"$regex": re.escape(pattern), "$options": "i"}}
-                )
+            if condition_query:
+                conditions.append(condition_query)
 
-            # Handle info fields
-            else:
-                conditions.append(
-                    {f"info.{field}": {"$regex": re.escape(pattern), "$options": "i"}}
-                )
-        else:
-            nested_query = build_mongo_query(condition)
+        elif isinstance(condition, FilterGroup):  # Handle nested groups recursively
+            nested_query = build_mongo_query(condition, field_prefix=field_prefix)
             if nested_query:
                 conditions.append(nested_query)
 
     if not conditions:
         return {}
 
-    operator = "$and" if filter_group.type == FilterGroupType.AND else "$or"
-    return {operator: conditions}
+    mongo_operator = "$and" if filter_group.type == FilterGroupType.AND else "$or"
+    return {mongo_operator: conditions}
 
 
 async def get_listings(
@@ -256,7 +342,7 @@ async def get_listings_with_analysis(
 ) -> List[Tuple[ListingDocument, Optional[AnalyzedListingDocument]]]:
     """Get listings with optional filters and analysis data."""
     # Start building the pipeline
-    pipeline = []
+    pipeline: List[Dict[str, Any]] = []
 
     # First stage: Join with analyzed_listings
     pipeline.append(
@@ -278,17 +364,16 @@ async def get_listings_with_analysis(
     # Build match conditions
     match_conditions = []
 
-    # Handle price filters
-    if price_min is not None or price_max is not None:
-        price_query = {}
-        if price_min is not None:
-            price_query["$gte"] = Decimal(str(price_min))
-        if price_max is not None:
-            price_query["$lte"] = Decimal(str(price_max))
-        if price_query:
-            match_conditions.append({"price_value": price_query})
+    # Handle price filters (apply directly to ListingDocument.price_value)
+    price_query_part = {}
+    if price_min is not None:
+        price_query_part["$gte"] = float(price_min)  # Use float
+    if price_max is not None:
+        price_query_part["$lte"] = float(price_max)  # Use float
+    if price_query_part:
+        match_conditions.append({"price_value": price_query_part})
 
-    # Handle text search
+    # Handle text search (apply directly to ListingDocument fields)
     if search_text:
         match_conditions.append(
             {
@@ -299,31 +384,12 @@ async def get_listings_with_analysis(
             }
         )
 
-    # Handle advanced filter group (which may include analysis fields)
+    # Handle advanced filter group (pass field_prefix='analysis' to build_mongo_query)
     if filter_group:
-        advanced_filter = build_mongo_query(filter_group)
+        # Pass 'analysis' as the prefix. build_mongo_query now handles prefixing correctly.
+        advanced_filter = build_mongo_query(filter_group, field_prefix="analysis")
         if advanced_filter:
-            # Transform field references to include analysis prefix where needed
-            def transform_filter(
-                query: Dict[str, Any] | List[Any],
-            ) -> Dict[str, Any] | List[Any]:
-                if isinstance(query, list):
-                    return [transform_filter(item) for item in query]
-                if not isinstance(query, dict):
-                    return query
-                transformed = {}
-                logger.debug(f"Transforming filter: {query}")
-                for k, v in query.items():
-                    logger.debug(f"Transforming filter: {k} = {v}")
-                    if k in ["type", "brand", "base_model", "model_variant"]:
-                        transformed[f"analysis.{k}"] = transform_filter(v)
-                    elif k.startswith("info."):
-                        transformed[f"analysis.{k}"] = transform_filter(v)
-                    else:
-                        transformed[k] = transform_filter(v)
-                return transformed
-
-            match_conditions.append(transform_filter(advanced_filter))
+            match_conditions.append(advanced_filter)
 
     # Add match stage if we have conditions
     if match_conditions:
@@ -337,22 +403,74 @@ async def get_listings_with_analysis(
             }
         )
 
+    # Add projection stage to reshape the document before pagination
+    # This ensures consistent field names regardless of whether analysis exists
+    pipeline.append(
+        {
+            "$project": {
+                "_id": 1,
+                "original_id": 1,
+                "site": 1,
+                "url": 1,
+                "title": 1,
+                "description": 1,
+                "price_str": 1,
+                "price_value": 1,
+                "currency": 1,
+                "scraped_at": 1,
+                "last_checked_at": 1,
+                "photo_urls": 1,
+                "analysis_status": 1,
+                "created_at": 1,
+                "updated_at": 1,
+                # Include analysis fields, defaulting to null if analysis is missing
+                "analysis": {
+                    "_id": "$analysis._id",
+                    "parsed_listing_id": "$analysis.parsed_listing_id",
+                    "original_listing_id": "$analysis.original_listing_id",
+                    "type": "$analysis.type",
+                    "brand": "$analysis.brand",
+                    "base_model": "$analysis.base_model",
+                    "model_variant": "$analysis.model_variant",
+                    "info": "$analysis.info",
+                    "confidence_score": "$analysis.confidence_score",
+                    "embeddings": "$analysis.embeddings",  # Consider excluding if not needed for list view
+                    "created_at": "$analysis.created_at",
+                    "updated_at": "$analysis.updated_at",
+                },
+            }
+        }
+    )
+
     # Add pagination
     pipeline.extend([{"$skip": skip}, {"$limit": limit}])
 
     logger.debug(f"Pipeline: {pipeline}")
     # Execute pipeline and convert results to Pydantic models
-    results = await ListingDocument.aggregate(pipeline).to_list()
+    results = await ListingDocument.aggregate(
+        pipeline
+    ).to_list()  # Use ListingDocument as the base for aggregation
 
     listings_with_analysis = []
     for result in results:
-        logger.debug(f"Result: {result['title']}")
-        listing = ListingDocument.model_validate(result)
-        analysis = (
-            AnalyzedListingDocument.model_validate(result["analysis"])
-            if result.get("analysis")
-            else None
-        )
+        # Safely pop the analysis part if it exists and is valid
+        analysis_data = result.pop("analysis", None)
+        listing = ListingDocument.model_validate(
+            result
+        )  # Validate the main listing part
+
+        analysis = None
+        # Validate analysis only if it's not None and has an _id (indicating it was present)
+        if analysis_data and analysis_data.get("_id"):
+            try:
+                # Exclude embeddings before validation if they exist but are not needed
+                # analysis_data.pop("embeddings", None)
+                analysis = AnalyzedListingDocument.model_validate(analysis_data)
+            except Exception as e:
+                logger.error(
+                    f"Failed to validate analysis data for listing {listing.original_id}: {e}. Data: {analysis_data}"
+                )
+
         listings_with_analysis.append((listing, analysis))
 
     logger.debug(f"Returned {len(listings_with_analysis)} listings with analysis")

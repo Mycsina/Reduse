@@ -1,9 +1,11 @@
 """Analysis logic for product listings."""
 
+import asyncio
 import logging
 import traceback
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
+from beanie import PydanticObjectId
 from tqdm import tqdm
 
 from ..ai.providers.factory import create_provider
@@ -147,26 +149,45 @@ async def change_state(listings: List[ListingDocument], status: AnalysisStatus) 
     # Collect original ids
     original_ids = [listing.original_id for listing in listings]
     # Update listings
-    ListingDocument.find_many({"original_id": {"$in": original_ids}}).update(
-        {"$set": {"analysis_status": status}}
+    await ListingDocument.find_many({"original_id": {"$in": original_ids}}).update_many(
+        {"$set": {"analysis_status": status.value}}
     )
 
 
 async def analyze_and_save(
-    listings: List[ListingDocument], existing_fields: Optional[List[str]] = None
+    listings: List[ListingDocument],
+    existing_fields: Optional[List[str]] = None,
 ) -> None:
-    """Analyze and save listings."""
+    """Analyze and save listings.
+    Uses a progress bar to track overall progress.
+    Concurrency is controlled by settings.ai.analysis_max_concurrent.
+    """
+    # Get concurrency setting for logging
+    max_concurrent = settings.ai.analysis_max_concurrent
     # Collect results as they come in
-    logger.debug(f"Analyzing {len(listings)} listings")
+    logger.debug(
+        f"Analyzing {len(listings)} listings with max concurrency {max_concurrent}"
+    )
     originals = []
     analysis_results = []
+    save_chunk_size = 10  # Define chunk size for saving
+
+    # Use tqdm for the main loop
+    progress_bar = tqdm(total=len(listings), desc="Analyzing and saving listings")
+
     async for original, analyzed in analyze_batch(
-        listings, batch_size=10, existing_fields=existing_fields
+        listings,
+        batch_size=10,
+        existing_fields=existing_fields,  # Removed max_concurrent param
     ):
         originals.append(original)
         analysis_results.append(analyzed)
-        if len(analysis_results) >= 10:  # Save in chunks to avoid memory buildup
+        progress_bar.update(1)  # Update progress for each analyzed item
+
+        if len(analysis_results) >= save_chunk_size:  # Save in chunks
             logger.debug(f"Saving {len(analysis_results)} analyzed listings")
+            # Mark as completed *before* saving analysis docs to avoid potential race conditions
+            # If saving fails, the listings remain COMPLETED, which is acceptable for retry logic.
             await change_state(originals, AnalysisStatus.COMPLETED)
             await bulk_create_analyses(analysis_results)
             originals = []
@@ -174,7 +195,11 @@ async def analyze_and_save(
 
     # Save any remaining results
     if analysis_results:
+        logger.debug(f"Saving final {len(analysis_results)} analyzed listings")
+        await change_state(originals, AnalysisStatus.COMPLETED)
         await bulk_create_analyses(analysis_results)
+
+    progress_bar.close()
 
 
 async def cancel_in_progress() -> int:
@@ -203,77 +228,130 @@ async def cancel_in_progress() -> int:
         return 0
 
 
-async def regenerate_embeddings() -> Dict[str, Any]:
-    """Regenerate embeddings for all completed analyses."""
+async def _regenerate_single_embedding(
+    analysis_doc: AnalyzedListingDocument,
+    semaphore: asyncio.Semaphore,
+) -> Tuple[Optional[PydanticObjectId], Optional[List[float]], Optional[Exception]]:
+    """Helper function to regenerate embedding for a single analysis document."""
+    async with semaphore:
+        try:
+            # Get the original listing to include its data in embedding
+            listing = await ListingDocument.get(analysis_doc.parsed_listing_id)
+            if not listing:
+                logger.warning(
+                    f"Original listing not found for analysis {analysis_doc.id}"
+                )
+                return (
+                    analysis_doc.id,
+                    None,
+                    None,
+                )  # Return ID but no embedding or error
+
+            # Prepare info for embedding generation
+            info = {
+                "type": analysis_doc.type,
+                "brand": analysis_doc.brand,
+                # Ensure base_model and model_variant exist before accessing them
+                "base_model": getattr(analysis_doc, "base_model", None),
+                "model_variant": getattr(analysis_doc, "model_variant", None),
+                **analysis_doc.info,
+            }
+            # Filter out None values from info before passing to embedding function
+            info = {k: v for k, v in info.items() if v is not None}
+
+            # Generate new embeddings
+            embeddings = await _generate_listing_embeddings(info, listing)
+
+            return analysis_doc.id, embeddings, None
+
+        except Exception as e:
+            logger.error(
+                f"Error regenerating embeddings for analysis {analysis_doc.id}: {str(e)}"
+            )
+            return analysis_doc.id, None, e
+
+
+async def regenerate_embeddings(
+    max_concurrency=settings.ai.embedding_max_concurrent,
+) -> Dict[str, Any]:
+    """Regenerate embeddings for all completed analyses concurrently.
+    Concurrency is controlled by settings.ai.embedding_max_concurrent.
+    """
     try:
         # Get all completed analyses
-        completed_analyses = await AnalyzedListingDocument.find_all().to_list()
+        completed_analyses = await AnalyzedListingDocument.find(
+            AnalyzedListingDocument.embeddings
+            != None  # Fetch only those that presumably have embeddings
+        ).to_list()
+
         if not completed_analyses:
-            return {"message": "No completed analyses found", "updated": 0}
+            return {
+                "message": "No completed analyses with existing embeddings found",
+                "updated": 0,
+            }
 
         logger.info(
             f"Found {len(completed_analyses)} completed analyses to regenerate embeddings for"
         )
+
+        # Read concurrency limit from settings
+        semaphore = asyncio.Semaphore(max_concurrency)
+
+        tasks = [
+            _regenerate_single_embedding(analysis_doc, semaphore)
+            for analysis_doc in completed_analyses
+        ]
+
         updated = 0
+        failed_ids = []
+        updated_embeddings = {}
 
-        # Process in batches to avoid memory issues
-        batch_size = settings.scraper.batch_size["listings"]
-        total_batches = (len(completed_analyses) + batch_size - 1) // batch_size
+        # Use tqdm for tracking progress of gathering results
+        progress_bar = tqdm(total=len(tasks), desc="Regenerating embeddings")
 
-        # Create progress bars
-        batch_progress = tqdm(total=total_batches, desc="Processing batches")
-        item_progress = tqdm(
-            total=len(completed_analyses), desc="Regenerating embeddings"
-        )
+        # Process results as they complete
+        for future in asyncio.as_completed(tasks):
+            doc_id, embeddings, error = await future
+            if error:
+                logger.error(f"Failed to regenerate embedding for {doc_id}: {error}")
+                if doc_id:
+                    failed_ids.append(doc_id)
+            elif doc_id and embeddings:
+                updated_embeddings[doc_id] = embeddings
+                updated += 1
+            progress_bar.update(1)
 
-        for i in range(0, len(completed_analyses), batch_size):
-            batch = completed_analyses[i : i + batch_size]
+        progress_bar.close()
+
+        # Bulk update the embeddings in the database
+        if updated_embeddings:
             logger.info(
-                f"Processing batch {i // batch_size + 1} with {len(batch)} analyses"
+                f"Bulk updating embeddings for {len(updated_embeddings)} analyses."
             )
 
-            for analysis_doc in batch:
-                try:
-                    # Get the original listing to include its data in embedding
-                    listing = await ListingDocument.get(analysis_doc.parsed_listing_id)
-                    if not listing:
-                        logger.warning(
-                            f"Original listing not found for analysis {analysis_doc.id}"
-                        )
-                        item_progress.update(1)
-                        continue
+            # Iterative saving approach
+            update_progress = tqdm(
+                total=len(updated_embeddings), desc="Saving updated embeddings"
+            )
+            for doc_id, embeddings_list in updated_embeddings.items():
+                # Ensure doc_id is a valid PydanticObjectId if needed, although .get should handle it
+                doc = await AnalyzedListingDocument.get(doc_id)
+                if doc:
+                    doc.embeddings = embeddings_list
+                    await doc.save()
+                update_progress.update(1)
+            update_progress.close()
+            logger.info(f"Finished saving updated embeddings.")
 
-                    # Generate new embeddings
-                    info = {
-                        "type": analysis_doc.type,
-                        "brand": analysis_doc.brand,
-                        "model": analysis_doc.model,
-                        **analysis_doc.info,
-                    }
-                    embeddings = await _generate_listing_embeddings(info, listing)
-
-                    # Update the document with new embeddings
-                    analysis_doc.embeddings = embeddings
-                    await analysis_doc.save()
-                    updated += 1
-                    item_progress.update(1)
-
-                except Exception as e:
-                    logger.error(
-                        f"Error regenerating embeddings for analysis {analysis_doc.id}: {str(e)}"
-                    )
-                    item_progress.update(1)
-                    continue
-
-            batch_progress.update(1)
-
-        batch_progress.close()
-        item_progress.close()
+        result_message = f"Successfully regenerated embeddings for {updated} analyses."
+        if failed_ids:
+            result_message += f" Failed for {len(failed_ids)} analyses."
 
         return {
-            "message": f"Successfully regenerated embeddings for {updated} analyses",
-            "total": len(completed_analyses),
+            "message": result_message,
+            "total_processed": len(completed_analyses),
             "updated": updated,
+            "failed": len(failed_ids),
             "dimensions": provider.get_dimensions(),
         }
 

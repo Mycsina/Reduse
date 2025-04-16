@@ -301,7 +301,6 @@ export default function ComparisonModal({
     }
   };
 
-  // Refactor renderPriceInfo into a proper React component
   const PriceInfo = ({
     listing,
     analysis,
