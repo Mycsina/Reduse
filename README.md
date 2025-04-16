@@ -1,71 +1,16 @@
 # Reduse
 
-A modern web application for intelligent product analysis and tracking, built with FastAPI and Next.js.
-
-## 🌟 Features
-
-- **AI-Powered Analysis**: Utilizes multiple AI providers (Google AI, Groq) for intelligent product analysis
-- **Real-time Product Tracking**: Monitor and analyze product listings from various sources
-- **Modern Web Interface**: Built with Next.js 13+ and Tailwind CSS
-- **Scalable Backend**: FastAPI backend with MongoDB Atlas cloud database integration
-- **Automated Scraping**: Configurable web scraping with Playwright
-- **Task Scheduling**: Built-in job scheduler for automated tasks
-- **eBay Integration**: Native integration with eBay's APIs
-
-## 📋 Implemented Epics
-
-### AI and Analysis
-
-- [x] Multi-provider AI integration (Google AI, Groq)
-- [x] Product listing analysis with structured output
-- [x] Intelligent text generation and processing
-- [x] Semantic embedding and similarity search
-
-### Data Collection
-
-- [x] Automated web scraping with Playwright
-- [ ] eBay API integration
-- [x] Scheduled data collection tasks
-- [x] Rate limiting and retry mechanisms
-
-### Task Management
-
-- [x] Background task scheduling
-- [x] Task status monitoring
-- [x] Failure recovery and retry logic
-- [x] Task analytics and reporting
-
-### Analytics
-
-- [ ] Usage tracking and monitoring
-- [ ] Performance analytics
-- [ ] Query analysis and optimization
-- [ ] Custom analytics dashboards
-
-### User Management
-
-- [ ] Subscription management
-- [ ] Usage quotas and limits
-- [ ] Payment processing
-- [ ] User preferences
-
-### Frontend Features
-
-- [ ] Real-time listing updates
-- [ ] Advanced search and filtering
-- [ ] Comparison tools
-- [ ] Task scheduling interface
-- [ ] Analysis visualization
+A modern webapp for listing analysis.
 
 ## 🏗️ Architecture
 
 ### Backend (Python)
 
 - FastAPI for the REST API
-- MongoDB Atlas (cloud) with Beanie ODM for data storage
+- MongoDB Atlas with Beanie ODM for data storage
 - Multiple AI providers (Google AI, Groq) for analysis
 - Task scheduling with APScheduler
-- Playwright for web scraping
+- Crawlee w/ Playwright, BeautifulSoup4 for web scraping
 - Poetry for dependency management
 
 ### Frontend (TypeScript)
@@ -107,9 +52,6 @@ ATLAS_USER=your_mongodb_user
 ATLAS_PASSWORD=your_mongodb_password
 GOOGLE_API_KEY=your_google_ai_key
 GROQ_API_KEY=your_groq_key
-EBAY_APP_ID=your_ebay_app_id
-EBAY_CERT_ID=your_ebay_cert_id
-EBAY_APP_CREDENTIALS=your_ebay_credentials
 MONGODB_URI=mongodb+srv://<user>:<password>@vroom.k7x4g.mongodb.net/
 ```
 
@@ -140,15 +82,15 @@ Backend:
 ```bash
 cd backend
 poetry install
-poetry run python start.py
+fastapi dev start.py
 ```
 
 Frontend:
 
 ```bash
 cd frontend
-npm install
-npm run dev
+bun i
+bun run dev
 ```
 
 ## 📚 Documentation
