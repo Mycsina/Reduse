@@ -2,15 +2,21 @@
 
 A modern webapp for listing analysis.
 
+What it does:
+- Parses listings from used listing websites
+- Analyzes what products are there described
+- Generates pricing data across different dimensions (currently models, planned across the different item types, brands, etc)
+- Provides an interface to analyze pricing data 
+
 ## 🏗️ Architecture
 
 ### Backend (Python)
 
 - FastAPI for the REST API
 - MongoDB Atlas with Beanie ODM for data storage
+- Crawlee w/ Playwright, BeautifulSoup4 for web scraping
 - Multiple AI providers (Google AI, Groq) for analysis
 - Task scheduling with APScheduler
-- Crawlee w/ Playwright, BeautifulSoup4 for web scraping
 - Poetry for dependency management
 
 ### Frontend (TypeScript)
@@ -25,13 +31,12 @@ A modern webapp for listing analysis.
 ### Prerequisites
 
 - Python 3.13+
-- Node.js 20+
+- JS Runtime (Node/Bun/etc, tested w/ Bun)
 - Docker and Docker Compose
 - MongoDB Atlas cluster with network access configured
 - API keys for:
   - Google AI
   - Groq
-  - eBay (optional)
 
 ### Environment Setup
 
