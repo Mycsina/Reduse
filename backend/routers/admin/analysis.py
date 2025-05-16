@@ -5,8 +5,7 @@ from typing import Optional
 from fastapi import APIRouter, BackgroundTasks, Depends
 from pydantic import BaseModel
 
-from ...logic import analysis
-from ...security import verify_api_key
+from backend.logic import analysis
 
 router = APIRouter()
 
@@ -27,13 +26,13 @@ class CancelAnalysisResponse(BaseModel):
 
 
 @router.get("/status")
-async def get_analysis_status(_: str = Depends(verify_api_key)):
+async def get_analysis_status():
     """Get the current status of analysis tasks."""
     return await analysis.get_analysis_status()
 
 
 @router.post("/retry-failed", response_model=AnalysisStatusResponse)
-async def retry_failed_analyses(background_tasks: BackgroundTasks, _: str = Depends(verify_api_key)):
+async def retry_failed_analyses(background_tasks: BackgroundTasks):
     """Retry all failed analyses."""
     status = await analysis.get_analysis_status()
     if status.failed == 0:
@@ -44,7 +43,7 @@ async def retry_failed_analyses(background_tasks: BackgroundTasks, _: str = Depe
 
 
 @router.post("/start", response_model=AnalysisStatusResponse)
-async def start_analysis(background_tasks: BackgroundTasks, _: str = Depends(verify_api_key)):
+async def start_analysis(background_tasks: BackgroundTasks):
     """Start analysis for unprocessed listings."""
     status = await analysis.get_analysis_status()
 
@@ -58,7 +57,7 @@ async def start_analysis(background_tasks: BackgroundTasks, _: str = Depends(ver
 
 
 @router.post("/resume", response_model=AnalysisStatusResponse)
-async def resume_analysis(background_tasks: BackgroundTasks, _: str = Depends(verify_api_key)):
+async def resume_analysis(background_tasks: BackgroundTasks):
     """Resume all in-progress analyses."""
     status = await analysis.get_analysis_status()
 
@@ -70,14 +69,14 @@ async def resume_analysis(background_tasks: BackgroundTasks, _: str = Depends(ve
 
 
 @router.post("/cancel", response_model=CancelAnalysisResponse)
-async def cancel_analysis(_: str = Depends(verify_api_key)):
+async def cancel_analysis():
     """Cancel all pending analyses."""
     cancelled = await analysis.cancel_in_progress()
     return CancelAnalysisResponse(message=f"Cancelled {cancelled} in-progress analyses", cancelled=cancelled)
 
 
 @router.post("/regenerate-embeddings")
-async def regenerate_embeddings(background_tasks: BackgroundTasks, _: str = Depends(verify_api_key)):
+async def regenerate_embeddings(background_tasks: BackgroundTasks):
     """Regenerate embeddings for all analyzed listings."""
     background_tasks.add_task(analysis.regenerate_embeddings)
     return {"message": "Started regenerating embeddings for all listings"}

@@ -12,10 +12,10 @@ from apscheduler.triggers.cron import CronTrigger
 from apscheduler.triggers.interval import IntervalTrigger
 from pymongo import MongoClient
 
-from ..config import settings
-from .function_introspection import \
+from backend.config import settings
+from backend.tasks.function_introspection import \
     introspect  # Keep import for type hinting if needed, but don't call at top level
-from .task_registry import TaskConfig
+from backend.tasks.task_registry import TaskConfig
 
 logger = logging.getLogger(__name__)
 

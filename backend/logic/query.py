@@ -4,10 +4,10 @@ import json
 import logging
 import re
 
-from ..ai.prompts.listing_query import ListingQueryPrompt
-from ..ai.providers.factory import create_provider
-from ..schemas.filtering import ListingQuery
-from ..services.query import get_distinct_info_fields
+from backend.ai.prompts.listing_query import ListingQueryPrompt
+from backend.ai.providers.factory import create_provider
+from backend.schemas.filtering import ListingQuery
+from backend.services.query import get_distinct_info_fields
 
 logger = logging.getLogger(__name__)
 
@@ -45,6 +45,18 @@ async def process_natural_language_query(query_text: str) -> ListingQuery:
 
         # Parse the structured query
         structured_query_dict = json.loads(json_str)
+
+        # Normalize filter type to uppercase
+        if structured_query_dict.get("filter", {}).get("type"):
+            structured_query_dict["filter"]["type"] = structured_query_dict["filter"][
+                "type"
+            ].upper()
+
+        # Normalize operators to uppercase
+        for condition in structured_query_dict.get("filter", {}).get("conditions", []):
+            if isinstance(condition, dict) and "operator" in condition:
+                condition["operator"] = condition["operator"].upper()
+
         structured_query = ListingQuery(**structured_query_dict)
 
     except (json.JSONDecodeError, ValueError) as e:

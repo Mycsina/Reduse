@@ -7,7 +7,7 @@ from typing import Any, Dict, List, Optional
 
 from pydantic import BaseModel, Field
 
-from .base import Prompt
+from backend.ai.prompts.base import Prompt
 
 
 class ProductInfo(BaseModel):
@@ -17,7 +17,9 @@ class ProductInfo(BaseModel):
     brand: str = Field(description="The name of the company or manufacturer")
     base_model: str = Field(description="The core product name/number before variants")
     model_variant: Optional[str] = Field(default=None, description="Specific version/edition of the base model")
-    info: Dict[str, Any] = Field(default_factory=dict, description="Additional product details, using canonical field names where possible.")
+    info: Dict[str, Any] = Field(
+        default_factory=dict, description="Additional product details, using canonical field names where possible."
+    )
 
 
 class ProductAnalysisPrompt(Prompt):
@@ -36,7 +38,7 @@ Analyze the following product listing to identify and extract key product inform
 
 General Guidelines:
 1. Prioritize Structured Parameters:
-   - If the 'parameters' field is present and contains relevant information, prioritize its values for specific attributes.
+   - If the 'parameters' field is present and contains relevant information, use it as context for the analysis, but don't repeat the values in the 'info' dictionary.
    - Use the title and description for context, broader information, and details not covered in 'parameters'.
 
 2. Field Reuse and Canonical Names:
@@ -227,7 +229,7 @@ REMINDER: Analyze listing (prioritize parameters). Extract Type, Brand, Base Mod
             formatted_parameters = json.dumps(parameters, indent=2)
             formatted_input += f"\nParameters:\n{formatted_parameters}"
         else:
-            formatted_input += "\nParameters: {}" # Indicate empty parameters
+            formatted_input += "\nParameters: {}"  # Indicate empty parameters
 
         return self.template.format(input=formatted_input, existing_fields=formatted_fields)
 

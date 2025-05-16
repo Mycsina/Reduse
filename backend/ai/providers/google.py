@@ -11,9 +11,9 @@ from google.ai.generativelanguage_v1beta.types import TaskType
 from google.api_core import exceptions
 from tqdm import tqdm
 
-from ...config import settings
-from ...utils.errors import ProviderError, RateLimitError
-from .base import BaseProvider
+from backend.ai.providers.base import BaseProvider
+from backend.config import settings
+from backend.utils.errors import ProviderError, RateLimitError
 
 
 class GoogleAIProvider(BaseProvider):
@@ -29,6 +29,7 @@ class GoogleAIProvider(BaseProvider):
         genai.configure(api_key=settings.ai.google_api_key.get_secret_value())
         self._dimensions = 768  # Using models/text-embedding-004 model
         self._default_model = default_model or settings.ai.default_model
+        self.provider = "google"
         self.logger = logging.getLogger(__name__)
 
     async def generate_text(

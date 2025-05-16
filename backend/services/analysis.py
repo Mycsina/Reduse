@@ -1,19 +1,19 @@
 """Analysis service for product listings."""
 
 import asyncio
-import json
 import logging
 import traceback
 from typing import Any, AsyncGenerator, Dict, List, Optional, Tuple
 
 from tqdm.asyncio import tqdm
 
-from ..ai.prompts.product_analysis import create_product_analysis_prompt
-from ..ai.providers.factory import create_provider
-from ..config import PROVIDER_TYPE, settings
-from ..schemas.analysis import AnalyzedListingDocument
-from ..schemas.listings import AnalysisStatus, ListingDocument
-from ..utils.errors import RateLimitError
+from backend.ai.prompts.product_analysis import create_product_analysis_prompt
+from backend.ai.providers.factory import create_provider
+from backend.config import PROVIDER_TYPE, settings
+from backend.schemas.analysis import AnalyzedListingDocument
+from backend.schemas.listings import AnalysisStatus, ListingDocument
+from backend.services.listings import _apply_mappings_to_listing
+from backend.utils.errors import RateLimitError
 
 logger = logging.getLogger(__name__)
 ## provider = create_provider(PROVIDER_TYPE.GROQ, model="llama-3.2-3b-preview")
@@ -121,6 +121,9 @@ async def _process_single_listing(
                     info[key] = [
                         item.strip() for item in value.split(",") if item.strip()
                     ]
+
+            # Apply field harmonization mappings to the info data
+            info = await _apply_mappings_to_listing(info, listing.original_id)
 
             embeddings = await _generate_listing_embeddings(info, listing)
 

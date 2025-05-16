@@ -6,7 +6,7 @@ from typing import Dict, Optional
 
 from pydantic import BaseModel
 
-from ...schemas.listings import ListingDocument
+from backend.schemas.listings import ListingDocument
 
 
 class CrawledListing(BaseModel):

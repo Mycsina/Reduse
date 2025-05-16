@@ -3,14 +3,17 @@
 import logging
 from typing import List, Optional
 
-from fastapi import APIRouter, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 
-from ..schemas.bug_reports import (BugReportCreate, BugReportDocument,
-                                   BugReportResponse, BugReportStatus,
-                                   BugReportType)
+from backend.schemas.bug_reports import (BugReportCreate, BugReportDocument,
+                                         BugReportResponse, BugReportStatus,
+                                         BugReportType)
+from backend.security import verify_security
 
 logger = logging.getLogger(__name__)
-router = APIRouter(prefix="/bug-reports", tags=["bug-reports"])
+router = APIRouter(
+    prefix="/bug-reports", tags=["bug-reports"], dependencies=[Depends(verify_security)]
+)
 
 
 @router.post("", response_model=BugReportResponse, status_code=status.HTTP_201_CREATED)

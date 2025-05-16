@@ -2,17 +2,15 @@
 
 import logging
 import re
-from decimal import \
-    DecimalException  # Keep for exception handling if needed, or remove if float conversion handles all cases
 from typing import Any, Dict, List, Optional, Tuple
 
 from beanie import PydanticObjectId
 from beanie.operators import Or, RegEx
 
-from ..schemas.analysis import AnalyzedListingDocument
-from ..schemas.filtering import (FilterCondition, FilterGroup, FilterGroupType,
-                                 ListingQuery, Operator)
-from ..schemas.listings import AnalysisStatus, ListingDocument
+from backend.schemas.analysis import AnalyzedListingDocument
+from backend.schemas.filtering import (FilterCondition, FilterGroup,
+                                       FilterGroupType, Operator)
+from backend.schemas.listings import AnalysisStatus, ListingDocument
 
 logger = logging.getLogger(__name__)
 
@@ -375,11 +373,12 @@ async def get_listings_with_analysis(
 
     # Handle text search (apply directly to ListingDocument fields)
     if search_text:
+        escaped_search_text = re.escape(search_text)
         match_conditions.append(
             {
                 "$or": [
-                    {"title": {"$regex": search_text, "$options": "i"}},
-                    {"description": {"$regex": search_text, "$options": "i"}},
+                    {"title": {"$regex": escaped_search_text, "$options": "i"}},
+                    {"description": {"$regex": escaped_search_text, "$options": "i"}},
                 ]
             }
         )
@@ -443,7 +442,13 @@ async def get_listings_with_analysis(
     )
 
     # Add pagination
-    pipeline.extend([{"$skip": skip}, {"$limit": limit}])
+    pagination_params = []
+    if skip != 0:
+        pagination_params.append({"$skip": skip})
+    if limit != 0:
+        pagination_params.append({"$limit": limit})
+    if pagination_params:
+        pipeline.extend(pagination_params)
 
     logger.debug(f"Pipeline: {pipeline}")
     # Execute pipeline and convert results to Pydantic models

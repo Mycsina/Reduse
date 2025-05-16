@@ -1,34 +1,28 @@
 "use client";
 
-import { useState } from "react";
 import { Button } from "@/components/ui/button";
-import { apiClient } from "@/lib/api-client";
+import { useUpdatePriceStatsMutation } from "@/lib/api/analytics/price-stats"; // Import the hook
 
 export default function UpdateStatsButton() {
-  const [isUpdating, setIsUpdating] = useState(false);
+  const { mutateAsync: updateStats, isPending } = useUpdatePriceStatsMutation();
 
   const handleUpdate = async () => {
     try {
-      setIsUpdating(true);
-      const response = await apiClient.updatePriceStats();
-      alert(response.message);
+      await updateStats(); // Call the mutation
     } catch (error) {
-      alert("Failed to update price statistics");
-      console.error(error);
-    } finally {
-      setIsUpdating(false);
+      console.error("UpdateStatsButton: Error caught", error); // Hook will show toast
     }
   };
 
   return (
-    <div className="max-w-7xl mx-auto px-4 py-4">
+    <div className="mx-auto max-w-7xl px-4 py-4">
       <Button
         onClick={handleUpdate}
-        disabled={isUpdating}
+        disabled={isPending}
         variant="outline"
         data-update-stats
       >
-        {isUpdating
+        {isPending
           ? "Updating Price Statistics..."
           : "Update Price Statistics"}
       </Button>

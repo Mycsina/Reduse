@@ -1,15 +1,13 @@
 """Admin routes for scraping operations."""
 
-import asyncio
 import json
 import logging
 from typing import Any, Dict, List
 
-from fastapi import APIRouter, BackgroundTasks, Depends
+from fastapi import APIRouter, BackgroundTasks
 from pydantic import BaseModel, HttpUrl
 
-from ...logic import analysis, scraping
-from ...security import verify_api_key
+from backend.logic import analysis, scraping
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -29,30 +27,10 @@ class ScrapingTaskRequest(BaseModel):
     run_analysis: bool = True
 
 
-@router.post("/olx-categories", response_model=QueuedTaskResponse)
-async def parse_olx_categories(background_tasks: BackgroundTasks, _: str = Depends(verify_api_key)):
-    """Admin endpoint to trigger OLX categories parsing."""
-    queue_id = f"olx-categories-{id(background_tasks)}"
-
-    async def process_categories():
-        try:
-            await scraping.scrape_olx_categories()
-            logger.info("OLX categories scraping completed")
-        except Exception as e:
-            logger.error(f"Error scraping OLX categories: {e}")
-
-    background_tasks.add_task(process_categories)
-    return QueuedTaskResponse(
-        message="OLX categories scraping started",
-        queue_id=queue_id,
-    )
-
-
 @router.post("/url-with-analysis", response_model=QueuedTaskResponse)
 async def scrape_and_analyze(
     request: ScrapingTaskRequest,
     background_tasks: BackgroundTasks,
-    _: str = Depends(verify_api_key),
 ):
     """Admin endpoint to scrape a URL and then analyze all listings."""
     queue_id = f"scrape-analyze-{id(background_tasks)}"
@@ -87,7 +65,10 @@ async def scrape_and_analyze(
 
 
 @router.post("/bulk", response_model=QueuedTaskResponse)
-async def bulk_scrape(urls: List[HttpUrl], background_tasks: BackgroundTasks, _: str = Depends(verify_api_key)):
+async def bulk_scrape(
+    urls: List[HttpUrl],
+    background_tasks: BackgroundTasks,
+):
     """Admin endpoint to scrape multiple URLs in bulk."""
     queue_id = f"bulk-scrape-{id(background_tasks)}"
 

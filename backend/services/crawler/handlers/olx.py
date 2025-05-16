@@ -6,16 +6,14 @@ from enum import Enum
 from typing import List
 from urllib.parse import urlparse
 
-import crawlee
 from crawlee import Request
 from crawlee.crawlers import PlaywrightCrawlingContext
 from playwright.async_api import Page
 from pydantic import HttpUrl
 
+from backend.schemas.listings import ListingDocument
+from backend.services.crawler.handlers.handlers import WebsiteHandler, label
 from backend.services.crawler.integration import get_already_crawled, simple_hash
-
-from ....schemas.listings import ListingDocument
-from .handlers import WebsiteHandler, label
 
 logger = logging.getLogger(__name__)
 
@@ -242,19 +240,25 @@ async def handle_olx_listings(context: PlaywrightCrawlingContext) -> None:
 
     # Handle pagination
     page_count = await _parse_page_count(page)
-    match = re.search(r"[?&]page=(\\d+)", current_url)
+    match = re.search(r"[?&]page=(\d+)", current_url)
     current_page = int(match.group(1)) if match else 1
 
     if current_page < page_count:
-        next_page_num = current_page + 1
         base_url_part = current_url.split("?")[0]
         query_params = context.request.url.split("?")[1] if "?" in context.request.url else ""
         params: dict[str, str] = dict(p.split("=", 1) for p in query_params.split("&") if "=" in p and p)
-        params["page"] = str(next_page_num)
-        next_page_url = f"{base_url_part}?{'&'.join(f'{k}={v}' for k, v in params.items())}"
 
-        logger.info(f"Enqueueing next listings page: {next_page_url}")
-        await context.add_requests([Request.from_url(next_page_url, label=str(OLXLabels.LISTINGS.value))])
+        # Enqueue all remaining pages
+        requests = []
+        for page_num in range(current_page + 1, page_count + 1):
+            params["page"] = str(page_num)
+            page_url = f"{base_url_part}?{'&'.join(f'{k}={v}' for k, v in params.items())}"
+            logger.info(f"Adding page {page_num} to queue: {page_url}")
+            requests.append(Request.from_url(page_url, label=str(OLXLabels.LISTINGS.value)))
+
+        if requests:
+            logger.info(f"Enqueueing {len(requests)} remaining pages ({current_page+1}-{page_count})")
+            await context.add_requests(requests)
 
 
 @label(OLXLabels.DETAIL.value)  # type: ignore

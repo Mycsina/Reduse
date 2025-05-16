@@ -2,14 +2,13 @@ import logging
 from typing import Dict, List, Tuple
 
 from crawlee.configuration import Configuration
-from crawlee.storages import Dataset, RequestQueue
+from crawlee.storages import Dataset
 
-from backend import config
-
-from ..logic.analysis import analyze_batch, bulk_create_analyses
-from ..schemas.listings import AnalysisStatus, ListingDocument, save_listings
-from ..services.crawler.crawler import Crawler
-from ..services.crawler.router import RouterWrapper
+from backend.logic.analysis import analyze_batch, bulk_create_analyses
+from backend.schemas.listings import AnalysisStatus, ListingDocument
+from backend.services.crawler.crawler import Crawler
+from backend.services.crawler.router import RouterWrapper
+from backend.services.listings import save_listings
 
 logger = logging.getLogger(__name__)
 
@@ -25,10 +24,11 @@ async def scrape_and_save(url: str) -> List[ListingDocument]:
         crawler_instance = Crawler(router=crawler_router)
         playwright_crawler = await crawler_instance.get_crawler()
 
-        dataset = await Dataset.open(configuration=Configuration(purge_on_start=True))
+        # TODO: keep state from previous incomplete crawls, need to study if it should be toggleable
+        dataset = await Dataset.open(configuration=Configuration(purge_on_start=False))
 
         logger.info("Running crawler...")
-        await playwright_crawler.run([url], purge_request_queue=True)
+        await playwright_crawler.run([url], purge_request_queue=False)
         logger.info(f"Crawler run finished for URL: {url}.")
 
         # Retrieve and save data iteratively, prioritizing detailed listings

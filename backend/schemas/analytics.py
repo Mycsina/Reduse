@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import Any, Dict, List, Tuple
+from typing import Any, List, Tuple
 
 from beanie import Document
 from bson import ObjectId as BaseObjectId
@@ -36,26 +36,6 @@ class ObjectId(BaseObjectId):
         cls, _source_type: Any, _handler: Any
     ) -> core_schema.CoreSchema:
         return core_schema.with_info_plain_validator_function(cls.validate)
-
-
-class MappingLog(Document):
-    """Document for tracking field mapping changes."""
-
-    mapping_id: ObjectId  # Reference to the FieldMapping that caused this change
-    document_id: ObjectId  # Reference to the analyzed listing that was changed
-    original_field: str  # Original field name
-    mapped_field: str  # New field name after mapping
-    original_value: Any  # Original value before mapping
-    timestamp: datetime = Field(default_factory=datetime.utcnow)
-
-    class Settings:
-        name = "mapping_logs"
-        indexes = [
-            [("mapping_id", 1)],  # For finding all changes from a mapping
-            [("document_id", 1)],  # For finding all changes to a document
-            [("timestamp", -1)],  # For historical queries
-            [("original_field", 1), ("mapped_field", 1)],  # For field-based queries
-        ]
 
 
 class ModelPriceStats(Document):
@@ -102,20 +82,4 @@ class FieldValueStats(Document):
             [("value_type", 1)],  # For grouping fields by type
             [("total_occurrences", -1)],  # For sorting by popularity
             [("last_updated", -1)],  # For finding recently updated stats
-        ]
-
-
-class FieldMapping(Document):
-    """Document for storing field mappings."""
-
-    mappings: Dict[str, str]  # Maps original field names to their canonical forms
-    created_at: datetime = Field(default_factory=datetime.utcnow)
-    updated_at: datetime = Field(default_factory=datetime.utcnow)
-    is_active: bool = True  # Flag to mark the current active mapping set
-
-    class Settings:
-        name = "field_mappings"
-        indexes = [
-            [("is_active", 1)],  # For finding active mapping set
-            [("created_at", -1)],  # For historical tracking
         ]

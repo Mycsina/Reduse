@@ -8,7 +8,7 @@ from typing import Callable
 from crawlee.crawlers import PlaywrightCrawlingContext
 from crawlee.router import Router
 
-from .handlers.handlers import default_handler
+from backend.services.crawler.handlers.handlers import default_handler
 
 logger = logging.getLogger(__name__)
 

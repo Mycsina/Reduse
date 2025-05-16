@@ -1,9 +1,26 @@
-Description: 
+Description:
 -WRITE AND READ DETAILS HERE
 +Actively WRITE details discovered during development and READ existing notes for context.
- 
- Examples: Project structure, imports etc
- # Scratchpad
- Listing uniqueness: Determined by the combination of (original_id, site). Deduplication logic must use this composite key.
-+
-+Dynamic Analysis Fields: Fields within the `analysis.info` subdocument are dynamic. Querying them requires constructing the MongoDB field path as `analysis.info.<field_name>`, distinct from top-level analysis fields like `analysis.type`. 
+
+Examples: Project structure, imports etc
+
+# Scratchpad
+
+Listing uniqueness: Determined by the combination of (original_id, site). Deduplication logic must use this composite key.
+
+- +Dynamic Analysis Fields: Fields within the `analysis.info` subdocument are dynamic. Querying them requires constructing the MongoDB field path as `analysis.info.<field_name>`, distinct from top-level analysis fields like `analysis.type`.
+- +Beanie Initialization: All Beanie Document classes defined in `backend/schemas` must be imported into `backend/db.py` and added to the `document_models` list within the `init_db` function to be registered with the database connection.
+
+Use UV for package management
+Batch operations should be done natively in mongodb, not in python.
+Run bun lint inside of the frontend folder if changing frontend code 
+NEVER DELETE FEATURES TO FIX LINTING ERRORS
+Define basemodels in routers, don't use them in other files, only pass necessary fields to other functions
+Always try to read files before asking for them
+
+# Natural Language Query Processing
+# Backend: Uses AI provider + ListingQueryPrompt (backend/ai/prompts/listing_query.py) -> structured ListingQuery (backend/schemas/filtering.py).
+# Handles price, search_text, and nested FilterGroup. Operators defined in backend/schemas/filtering.py::Operator.
+# MongoDB translation in backend/services/query.py::build_mongo_query handles field prefixes (analysis., analysis.info.).
+# Frontend: Homepage (frontend/src/app/page.tsx) sends NLQ, gets structured query, stores in sessionStorage('listingQuery'), redirects to /listings?nl=true.
+# Listings page (frontend/src/app/listings/page.tsx) reads sessionStorage when nl=true to initialize filters.

@@ -123,6 +123,7 @@ class LoggingSettings(BaseSettings):
             "sse_starlette.sse": "WARNING",  # Suppress specific SSE debug logs
             "watchfiles.main": "WARNING",  # Suppress watchfiles logs
             "crawlee": "WARNING",
+            "numba": "WARNING",
         }
     )
 
@@ -157,6 +158,7 @@ class Settings(BaseSettings):
     crawler: CrawlerSettings = Field(default_factory=CrawlerSettings)
     logging: LoggingSettings = Field(default_factory=LoggingSettings)
     scheduler: SchedulerSettings = Field(default_factory=SchedulerSettings)
+    AUTH_SECRET_KEY: str = Field(default="", validation_alias="AUTH_SECRET_KEY")
 
     model_config = SettingsConfigDict(env_file=".env", extra="allow")
 

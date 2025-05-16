@@ -61,3 +61,24 @@ class ListingQuery(BaseModel):
     filter: Optional[FilterGroup] = None
     skip: int = Field(default=0, ge=0)
     limit: int = Field(default=12, ge=1, le=100)
+
+
+class SavedListingQueryItems(BaseModel):
+    """Query model for saved favorite searches, omitting pagination fields."""
+
+    price: Optional[PriceFilter] = None
+    search_text: Optional[str] = None
+    filter: Optional[FilterGroup] = None
+
+    class Config:
+        # Ensure that if extra fields (like skip/limit from an older version) are present,
+        # they are ignored and not part of the model.
+        # Pydantic v2 uses model_config with extra = 'ignore'
+        # For Pydantic v1, this is extra = Extra.ignore
+        # Assuming Pydantic v2 style from StrEnum, will use model_config
+        # If this causes an error, it means Pydantic v1 is in use.
+        # For now, let's assume model_config is available.
+        # If not, we can remove this Config or adjust to Pydantic v1.
+        # Update: Pydantic BaseModel itself handles this well by default for defined fields.
+        # No explicit extra='ignore' needed just for omitting fields.
+        pass

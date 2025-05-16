@@ -8,8 +8,8 @@ from groq import AsyncGroq
 from groq.types.chat import ChatCompletion
 from httpx import HTTPStatusError
 
-from ...utils.errors import ProviderError, RateLimitError
-from .base import BaseProvider
+from backend.ai.providers.base import BaseProvider
+from backend.utils.errors import ProviderError, RateLimitError
 
 
 class GroqProvider(BaseProvider):
@@ -27,6 +27,7 @@ class GroqProvider(BaseProvider):
         self.model = default_model or "llama-3.1-8b-instant"
         self._dimensions = 768  # Same as Gemini for compatibility
         self.logger = logging.getLogger(__name__)
+        self.provider = "groq"
 
     async def generate_text(
         self,

@@ -13,7 +13,7 @@ from fastapi import Request, Response
 from fastapi.routing import APIRoute
 from starlette.middleware.base import BaseHTTPMiddleware
 
-from ..config import LOGS_DIR, settings
+from backend.config import LOGS_DIR, settings
 
 # Initialize logger
 logger = logging.getLogger(__name__)

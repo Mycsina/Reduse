@@ -8,14 +8,15 @@ from typing import Any, Dict, List, Optional, Tuple
 from beanie import PydanticObjectId
 from tqdm import tqdm
 
-from ..ai.providers.factory import create_provider
-from ..config import PROVIDER_TYPE, settings
-from ..schemas.analysis import AnalysisStats, AnalyzedListingDocument
-from ..schemas.listings import AnalysisStatus, ListingDocument
-from ..services.analysis import (_generate_listing_embeddings, analyze_batch,
-                                 bulk_create_analyses, get_listings_by_status,
-                                 get_status_counts)
-from ..services.query import get_distinct_info_fields
+from backend.ai.providers.factory import create_provider
+from backend.config import PROVIDER_TYPE, settings
+from backend.schemas.analysis import AnalysisStats, AnalyzedListingDocument
+from backend.schemas.listings import AnalysisStatus, ListingDocument
+from backend.services.analysis import (_generate_listing_embeddings,
+                                       analyze_batch, bulk_create_analyses,
+                                       get_listings_by_status,
+                                       get_status_counts)
+from backend.services.query import get_distinct_info_fields
 
 # Get logger but don't configure it (configuration is done in logging_config.py)
 logger = logging.getLogger(__name__)

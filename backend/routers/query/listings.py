@@ -1,15 +1,16 @@
 """Listing query endpoints."""
 
 import logging
-from typing import Dict, List, Optional
+from typing import List, Optional
 
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
-from ...logic.query import process_natural_language_query
-from ...schemas.analysis import AnalyzedListingDocument
-from ...schemas.filtering import ListingQuery
-from ...schemas.listings import ListingDocument
+from backend.logic.query import process_natural_language_query
+from backend.schemas.analysis import AnalyzedListingDocument
+from backend.schemas.filtering import ListingQuery
+from backend.schemas.listings import ListingDocument
+
 from ...services.query import (
     get_distinct_info_fields,
     get_listing_with_analysis,
@@ -61,7 +62,7 @@ async def query_listings(query: ListingQuery):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.post("/similar/{listing_id}", response_model=List[ListingResponse])
+@router.get("/similar/{listing_id}", response_model=List[ListingResponse])
 async def get_similar_listings_route(
     listing_id: str,
     skip: int = 0,
@@ -107,6 +108,5 @@ async def natural_language_query_route(request: NaturalLanguageQueryRequest):
     try:
         return await process_natural_language_query(request.query)
     except Exception as e:
-        raise e
         logger.error(f"Error processing natural language query: {e}")
         raise HTTPException(status_code=500, detail=str(e))

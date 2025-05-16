@@ -2,7 +2,7 @@
 
 from typing import Any, Dict, List
 
-from .base import Prompt
+from backend.ai.prompts.base import Prompt
 
 
 class ListingQueryPrompt(Prompt):
@@ -24,61 +24,102 @@ TASK:
 Convert the user query into a structured JSON object that can be used to filter a database of listings.
 
 OUTPUT FORMAT:
-Return a valid JSON object with these possible fields:
-- "price": {{ "min": number or null, "max": number or null }}
-- "search_text": string or null
+Return a valid JSON object with these possible top-level fields:
+- "price": {{ "min": number | null, "max": number | null }} (Extract numeric price ranges)
+- "search_text": string | null (For general keyword searches across title/description)
 - "filter": {{ 
-    "operator": "and" or "or", 
+    "type": "AND" | "OR",
     "conditions": [
-      {{ "field": string, "operator": string, "value": any }}
+      {{ "field": string, "operator": string, "value": string }} | {{ "type": "AND" | "OR", "conditions": [...] }} (Nested groups)
     ]
-  }}
+  }} | null
 
-Only include fields mentioned or implied in the query.
-Operators can be: "eq" (equals), "lt" (less than), "gt" (greater than), "lte" (less than or equal), "gte" (greater than or equal).
+Only include fields mentioned or implied in the query. Use the "filter" field for specific field-based conditions.
+
+OPERATORS:
+- "EQ": Case-insensitive exact string match (e.g., color = 'red').
+- "CONTAINS": Case-insensitive substring match (e.g., description contains 'ocean view').
+- "REGEX": Case-insensitive regex match (use if the user provides a pattern).
+- "EQ_NUM": Numeric equality (e.g., bedrooms = 3).
+- "GT": Numeric greater than (e.g., price > 1000).
+- "LT": Numeric less than (e.g., mileage < 50000).
+- "GTE": Numeric greater than or equal (e.g., year >= 2020).
+- "LTE": Numeric less than or equal (e.g., size <= 1500).
+
+GUIDELINES:
+- Use `price` for explicit price range queries (e.g., "between $100k and $200k", "under $50k", "over $1M").
+- Use `search_text` for general keywords not tied to a specific field (e.g., "waterfront property", "reliable sedan").
+- Use `filter` for conditions on specific `AVAILABLE FIELDS`.
+- Choose the most appropriate operator. Prefer specific numeric operators (`EQ_NUM`, `GT`, `LT`, etc.) for numeric fields.
+- Use `CONTAINS` for partial text matches on string fields.
+- Use `EQ` for exact matches on string fields (like categories, specific model names if appropriate).
+- Handle numeric values correctly (extract numbers from text like "$500,000" -> 500000).
+- If a query implies a range on a specific field (not price), use two conditions (e.g., "year between 2018 and 2020" -> year gte 2018 AND year lte 2020).
 
 EXAMPLES:
 
 Query: "Apartments under $500,000 with at least 2 bedrooms"
-{{
-  "price": {{
-    "max": 500000
-  }},
-  "filter": {{
-    "operator": "and",
+{{ 
+  "price": {{ "min": null, "max": 500000 }},
+  "search_text": null,
+  "filter": {{ 
+    "type": "AND", 
     "conditions": [
-      {{
-        "field": "bedrooms",
-        "operator": "gte",
-        "value": 2
+      {{ "field": "bedrooms", "operator": "GTE", "value": 2 }}
+    ]
+  }}
+}}
+
+Query: "Show me red cars or blue trucks"
+{{ 
+  "price": null,
+  "search_text": null,
+  "filter": {{
+    "type": "OR",
+    "conditions": [
+      {{ 
+        "type": "AND",
+        "conditions": [
+            {{ "field": "color", "operator": "EQ", "value": "red" }},
+            {{ "field": "type", "operator": "EQ", "value": "car" }}
+        ]
+      }},
+      {{ 
+        "type": "AND",
+        "conditions": [
+            {{ "field": "color", "operator": "EQ", "value": "blue" }},
+            {{ "field": "type", "operator": "EQ", "value": "truck" }}
+        ]
       }}
     ]
   }}
 }}
 
-Query: "Red cars with low mileage from 2018 or newer"
-{{
+Query: "Find listings mentioning 'hardwood floors' with a price over 1,000,000"
+{{ 
+  "price": {{ "min": 1000000, "max": null }},
+  "search_text": null,
   "filter": {{
-    "operator": "and",
+    "type": "AND",
     "conditions": [
-      {{
-        "field": "color",
-        "operator": "eq",
-        "value": "red"
-      }},
-      {{
-        "field": "year",
-        "operator": "gte",
-        "value": 2018
-      }},
-      {{
-        "field": "mileage",
-        "operator": "lte",
-        "value": 50000
-      }}
+        {{ "field": "description", "operator": "CONTAINS", "value": "hardwood floors" }}
     ]
   }}
 }}
+
+Query: "Vehicles from 2020 or newer with less than 30,000 miles"
+{{
+  "price": null,
+  "search_text": null,
+  "filter": {{
+    "type": "AND",
+    "conditions": [
+      {{ "field": "year", "operator": "GTE", "value": 2020 }},
+      {{ "field": "mileage", "operator": "LT", "value": 30000 }}
+    ]
+  }}
+}}
+
 
 YOUR RESPONSE (JSON only):
 

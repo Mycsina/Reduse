@@ -8,9 +8,10 @@ export function VisuallyHidden({
 }: React.HTMLAttributes<HTMLSpanElement>) {
   return (
     <span
+      data-slot="visually-hidden"
       className={cn(
-        "absolute w-[1px] h-[1px] p-0 -m-[1px] overflow-hidden whitespace-nowrap border-0",
-        className
+        "absolute -m-[1px] h-[1px] w-[1px] overflow-hidden border-0 p-0 whitespace-nowrap",
+        className,
       )}
       {...props}
     >

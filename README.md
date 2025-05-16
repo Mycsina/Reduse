@@ -6,7 +6,7 @@ What it does:
 - Parses listings from used listing websites
 - Analyzes what products are there described
 - Generates pricing data across different dimensions (currently models, planned across the different item types, brands, etc)
-- Provides an interface to analyze pricing data 
+- Provides an interface to analyze pricing data and find the best deals
 
 ## 🏗️ Architecture
 
@@ -101,4 +101,4 @@ bun run dev
 ## 📚 Documentation
 
 - Backend API documentation: http://localhost:8000/docs
-- Frontend component documentation: http://localhost:3000/docs (coming soon)
+- Frontend component documentation: WIP

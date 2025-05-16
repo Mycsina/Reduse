@@ -16,6 +16,7 @@ class BaseProvider(ABC):
         """
         self.logger = logging.getLogger(__name__)
         self._default_model = default_model
+        self.provider = "base"
 
     @property
     def default_model(self) -> Optional[str]:

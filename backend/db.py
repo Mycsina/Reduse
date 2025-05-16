@@ -1,18 +1,27 @@
 """Database connection and initialization."""
 
 import logging
-from typing import Optional
 
 from beanie import init_beanie
+from fastapi_users.db import BeanieUserDatabase
 from motor.motor_asyncio import AsyncIOMotorClient
 
-from .config import settings
-from .schemas.analysis import AnalyzedListingDocument
-from .schemas.batch import BatchJobDocument
-from .schemas.listings import ListingDocument
-from .schemas.bug_reports import BugReportDocument
+from backend.config import settings
+from backend.schemas.analysis import AnalyzedListingDocument
+from backend.schemas.analytics import FieldValueStats, ModelPriceStats
+from backend.schemas.batch import BatchJobDocument
+from backend.schemas.bug_reports import BugReportDocument
+from backend.schemas.embeddings import FieldEmbedding
+from backend.schemas.favorites import FavoriteSearchDocument
+from backend.schemas.field_harmonization import FieldHarmonizationMapping
+from backend.schemas.listings import ListingDocument
+from backend.schemas.users import User
 
 logger = logging.getLogger(__name__)
+
+
+async def get_user_db():
+    yield BeanieUserDatabase(User)  # type: ignore
 
 
 async def init_db() -> None:
@@ -23,12 +32,17 @@ async def init_db() -> None:
 
     logger.info(f"Initializing Beanie with database: {settings.database.database_name}")
 
-    # Initialize document models
     document_models = [
         ListingDocument,
         AnalyzedListingDocument,
         BatchJobDocument,
         BugReportDocument,
+        FieldEmbedding,
+        FieldHarmonizationMapping,
+        ModelPriceStats,
+        FieldValueStats,
+        User,
+        FavoriteSearchDocument,
     ]
 
     try:
